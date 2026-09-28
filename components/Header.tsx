@@ -49,7 +49,7 @@ export default function Header({
           <Link href="/" onClick={onLogoClick} className="flex shrink-0 items-center gap-0">
             {/* eslint-disable-next-line @next/next/no-img-element -- small static logo image, no optimization needed */}
             <img
-              src="/kysoqr-logo.svg"
+              src="/kysoqr-logo.png"
               alt="KysoQR"
               className="h-9 w-auto object-contain sm:h-12"
             />
