@@ -726,6 +726,22 @@ export function SigningWizard({
     setStep('upload');
   }, []);
 
+  const [qrLinkCopied, setQrLinkCopied] = useState(false);
+  const handleCopyQrLink = useCallback(() => {
+    if (!qrContent) return;
+    navigator.clipboard
+      .writeText(qrContent)
+      .then(() => {
+        setQrLinkCopied(true);
+        window.setTimeout(() => setQrLinkCopied(false), 1500);
+      })
+      .catch(() => {
+        // Clipboard may be unavailable (permissions/non-secure context) --
+        // the raw link is still visible right next to this button either
+        // way, so failing silently here doesn't strand the user.
+      });
+  }, [qrContent]);
+
   const resetFlow = () => {
     clearPersistedSession();
     if (signedPdfUrlRef.current) URL.revokeObjectURL(signedPdfUrlRef.current);
@@ -1160,21 +1176,43 @@ export function SigningWizard({
                     <div className="mt-1">
                       <ExpiresIn expiresAt={expiresAt} onExpired={() => setStatus('EXPIRED')} />
                     </div>
-                    {/* Only accurate when a CCCD was actually supplied in
-                        step 1 -- that's the only case CAS pushes a
-                        notification at all (see SignerConfigPanel's own
-                        hint); otherwise QR is the only way to sign, so
-                        claiming a push was sent would be misleading.
-                        `signerConfig` is frozen from step 1 at this point,
-                        so this reflects exactly what was actually submitted. */}
-                    {signerConfig.identificationNumber.trim() && (
-                      <p className="mt-2 max-w-xs text-xs text-text-muted">{t('scan.pushHint')}</p>
-                    )}
-                    <div className="mt-4 flex items-center gap-2">
+                  </div>
+                  <div className="max-w-sm space-y-2 text-sm text-text-main">
+                    <p>{t('scan.instruction')}</p>
+                    <div className="pt-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+                      {t('scan.qrPayload')}
+                    </div>
+                    {/* Compact single-line link + copy button, replacing the
+                        old full-URL `<pre>` block -- the raw payload is
+                        rarely something anyone reads character-by-character;
+                        copying it (to paste into Cas ID, or share) is the
+                        actual use case. */}
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="min-w-0 flex-1 truncate rounded-md bg-gray-50 px-3 py-2 text-xs text-text-main"
+                        title={qrContent ?? undefined}
+                      >
+                        <span className="text-text-muted">{t('scan.linkLabel')} </span>
+                        {qrContent}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCopyQrLink}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border-subtle bg-white px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:border-primary hover:text-primary"
+                      >
+                        <Icon
+                          icon={qrLinkCopied ? 'lucide:check' : 'lucide:copy'}
+                          className="h-3.5 w-3.5"
+                        />
+                        {qrLinkCopied ? t('scan.copied') : t('scan.copyLink')}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2">
                       <button
                         type="button"
                         onClick={handleSyncStatus}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-white px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:border-primary hover:text-primary"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-strong"
                       >
                         {t('scan.syncStatus')}
                       </button>
@@ -1188,22 +1226,27 @@ export function SigningWizard({
                         <button
                           type="button"
                           onClick={handleBackToPlacement}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-white px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:border-primary hover:text-primary"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-white px-3.5 py-1.5 text-sm font-semibold text-primary transition hover:bg-surface-soft"
                         >
                           {t('scan.back')}
                         </button>
                       )}
                     </div>
                   </div>
-                  <div className="max-w-sm space-y-2 text-sm text-text-main">
-                    <p>{t('scan.instruction')}</p>
-                    <div className="pt-2 text-xs font-medium uppercase tracking-wide text-text-muted">
-                      {t('scan.qrPayload')}
-                    </div>
-                    <pre className="mt-1 max-h-24 max-w-xs overflow-auto rounded-md bg-gray-50 px-3 py-2 text-xs text-text-main">
-                      <code className="whitespace-pre-wrap break-words font-mono">{qrContent}</code>
-                    </pre>
-                  </div>
+                </div>
+
+                {/* Unconditional -- covers both paths ("scan" or "tap the
+                    notification") as options, so it stays accurate whether
+                    or not a CCCD was actually supplied in step 1 (the only
+                    case CAS pushes a notification at all; see
+                    SignerConfigPanel's own hint) -- unlike the narrower
+                    `pushHint` this replaces, which specifically asserted a
+                    push was sent and so had to stay conditional on that. */}
+                <div className="mt-6 flex items-start gap-2 rounded-xl border border-border-subtle bg-surface-soft px-4 py-3 text-sm text-primary-strong">
+                  <Icon icon="lucide:info" className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>
+                    <span className="font-semibold">Tip:</span> {t('scan.tip')}
+                  </p>
                 </div>
 
                 <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
