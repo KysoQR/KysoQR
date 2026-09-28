@@ -1117,14 +1117,13 @@ export function SigningWizard({
             // large, visually awkward empty white block below this step's
             // short content (QR code + a couple lines). Same pattern as the
             // "upload" step's section just above: hug the content instead.
-            // `max-w-3xl mx-auto`: SigningCard is `w-full` and would
-            // otherwise stretch to this page's full `max-w-6xl` content
-            // width (needed by the "upload" step's PDF preview, not by this
-            // step's much narrower QR + text content) -- cap and center the
-            // whole card at the same width its own content grid already
-            // uses, instead of leaving a wide card with empty space on the
-            // right of a narrow content block.
-            <section className="mx-auto my-auto flex w-full max-w-3xl flex-col self-center">
+            // Card capped at a fine-tuned 1180px -- narrower than
+            // `max-w-3xl` (visibly narrower than "Tải PDF"/"Tài liệu đã ký",
+            // the mismatch this originally replaced) would allow, but well
+            // short of fully unconstrained `w-full` (stretches past a sane
+            // reading width on a very wide window, spreading the QR + text
+            // grid so thin it looks broken/overflowing).
+            <section className="mx-auto my-auto flex w-full max-w-[1180px] flex-col self-center">
               <SigningCard className="flex flex-1 flex-col">
                 <SigningStepHeader
                   stepNumber={2}
@@ -1137,7 +1136,7 @@ export function SigningWizard({
                     {t('scan.statusError')} <span className="font-mono">{statusError}</span>
                   </div>
                 )}
-                <div className="mt-6 grid max-w-3xl gap-8 lg:grid-cols-[minmax(280px,max-content)_minmax(0,1fr)]">
+                <div className="mx-auto mt-6 grid gap-8 lg:grid-cols-[minmax(280px,max-content)_minmax(0,420px)]">
                   <div className="flex flex-col items-start">
                     <div className="w-full max-w-xs rounded-xl border border-border-subtle bg-white p-4 shadow-sm">
                       <div className="flex justify-center">
