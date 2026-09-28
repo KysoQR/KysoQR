@@ -120,7 +120,6 @@
     "title": "Quét QR (Cấp quyền ký tài liệu)",
     "subtitle": "Cho phép được ký tài liệu này bằng ứng dụng Cas ID của bạn.",
     "instruction": "Yêu cầu người ký quét mã QR này bằng ứng dụng Cas ID và phê duyệt quyền ký.",
-    "pushHint": "Đã gửi yêu cầu ký sang app Cas ID của người ký — có thể ký từ thông báo hoặc quét mã.",
     "caption": "Quét bằng ứng dụng Cas ID",
     "syncStatus": "Cập nhật trạng thái",
     "back": "Quay lại chỉnh sửa",
@@ -135,6 +134,10 @@
     "expiresIn": "Hết hạn sau {{time}}",
     "qrRenderFailed": "Không thể hiển thị mã QR.",
     "qrRenderFailedSeePayload": "Xem nội dung bên dưới.",
+    "linkLabel": "link:",
+    "copyLink": "Sao chép liên kết",
+    "copied": "Đã sao chép!",
+    "tip": "Mở CAS ID để quét QR cấp quyền ký hoặc nhấn vào thông báo mới gửi tới CAS ID của bạn.",
     "aria": { "qrCode": "Mã QR" }
   },
   "sign": {

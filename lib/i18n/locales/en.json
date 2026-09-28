@@ -120,7 +120,6 @@
     "title": "Scan QR (Permission)",
     "subtitle": "Authorize signing this document via your Cas ID app.",
     "instruction": "Ask the signer to scan this QR code with the Cas ID app and approve the signing request.",
-    "pushHint": "A signing request was pushed to the signer's Cas ID app — they can approve it from the notification or by scanning the code.",
     "caption": "Scan with Cas ID app",
     "syncStatus": "Refresh status",
     "back": "Back to edit",
@@ -135,6 +134,10 @@
     "expiresIn": "Expires in {{time}}",
     "qrRenderFailed": "Failed to render QR.",
     "qrRenderFailedSeePayload": "See payload below.",
+    "linkLabel": "link:",
+    "copyLink": "Copy link",
+    "copied": "Copied!",
+    "tip": "Open Cas ID to scan the QR for signing permission, or tap the notification sent to your Cas ID app.",
     "aria": { "qrCode": "QR code" }
   },
   "sign": {

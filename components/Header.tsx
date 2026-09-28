@@ -51,7 +51,7 @@ export default function Header({
             <img
               src="/kysoqr-logo.png"
               alt="KysoQR"
-              className="h-9 w-auto object-contain sm:h-12"
+              className="h-7 w-auto object-contain sm:h-9"
             />
           </Link>
 
