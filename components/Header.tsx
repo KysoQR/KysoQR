@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from './LanguageSwitcher';
 import { GithubStarsButton } from './GithubStarsButton';
 
-/** External nav targets (e.g. casso.vn) open in a new tab. */
+/** External nav targets (e.g. cas.so API docs) open in a new tab. */
 const externalLinkProps = (href: string) =>
   /^https?:\/\//.test(href) ? { target: '_blank', rel: 'noopener noreferrer' } : {};
 
@@ -15,7 +15,7 @@ const externalLinkProps = (href: string) =>
  * (`/`) matches no tab, so nothing is underlined there. */
 const NAV_ITEMS: { key: string; href: string | null; matchPath: string | null; labelKey: string }[] = [
   { key: 'docs', href: '/docs#description/introduction', matchPath: '/docs', labelKey: 'nav.docs' },
-  { key: 'api', href: 'https://casso.vn/', matchPath: null, labelKey: 'nav.api' },
+  { key: 'api', href: 'https://cas.so/general/api/product-esign', matchPath: null, labelKey: 'nav.api' },
 ];
 
 /** Simplified port of x-sign-web/src/components/Header.tsx — nav tabs
