@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Xsign-Opensource deploy script — Server mode (see docs/DEPLOY.md).
+# KysoQR deploy script — Server mode (see docs/DEPLOY.md).
 #
-# Run from inside the cloned repo on the server (e.g. /opt/xsign-opensource),
+# Run from inside the cloned repo on the server (e.g. /opt/kysoqr),
 # as the app's dedicated user. Used both for the first deploy and every
 # redeploy afterwards. Never touches .env (gitignored; `git reset --hard`
 # below only affects tracked files) and never invents its own build/start
@@ -12,7 +12,7 @@ set -euo pipefail
 # Usage: ./scripts/deploy.sh [branch]   (default: main)
 
 BRANCH="${1:-main}"
-SERVICE_NAME="xsign-opensource"
+SERVICE_NAME="kysoqr"
 UNIT_FILE="deploy/${SERVICE_NAME}.service"
 
 echo "==> Fetching '${BRANCH}'..."

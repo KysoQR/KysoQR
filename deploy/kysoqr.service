@@ -1,11 +1,11 @@
 [Unit]
-Description=Xsign-Opensource (KysoQR)
+Description=KysoQR
 After=network.target
 
 [Service]
 Type=simple
 User=xsign
-WorkingDirectory=/opt/xsign-opensource
+WorkingDirectory=/opt/kysoqr
 ExecStart=/usr/bin/npm run start
 Environment=PORT=3000
 Restart=on-failure
