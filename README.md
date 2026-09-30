@@ -97,6 +97,7 @@ Two independent flows in one repo, a fully stateless server (no file writes, no 
 - **Signing** (CAS-driven) — `POST /api/sign/request` sends the document + signature position to CAS → poll `GET /api/sign/status` → once complete, download the signed file via `GET /api/sign/download`. Signing-session state lives only in the browser's `localStorage`.
 - **Verification** (document-driven) — `POST /api/verify/upload` performs real signature verification (signature + chain + trust anchor), fully independent of CAS/any database. `GET /api/verify/signing-round/[orgIdSigned]` is a convenience CAS lookup, not a replacement for verify-by-upload.
 - CAS is abstracted behind a `CasProvider` interface, with one real implementation (`CasEsignProvider`) — it calls the CAS e-signing API directly; there is no mock mode.
+- API reference: interactive at `/docs` when the app is running (OpenAPI files in [public/openapi/](public/openapi/)).
 
 ## What does the signer need to do?
 
@@ -168,7 +169,7 @@ Licensed under the **MIT License** — see [`LICENSE`](LICENSE).
 
 ## Status
 
-The project is under active development — the signing flow is fully working; the signature-verification flow is still being built out incrementally (some routes/UI are still scaffolding, without complete business logic).
+The project is under active development — both the signing flow and the signature-verification flow (CMS signature, certificate chain, AIA, OCSP/CRL) are fully working.
 
 ## Environment variables you'll need
 

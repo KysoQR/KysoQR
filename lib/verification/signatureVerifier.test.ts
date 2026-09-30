@@ -1,4 +1,6 @@
+import * as asn1js from 'asn1js';
 import forge from 'node-forge';
+import * as pkijs from 'pkijs';
 import { describe, expect, it } from 'vitest';
 import { verifySignerInfoSignature } from './signatureVerifier';
 
@@ -181,5 +183,66 @@ describe('verifySignerInfoSignature', () => {
     const byteRange: [number, number, number, number] = [0, content.length, content.length, 0];
     const result = verifySignerInfoSignature(toDerBuffer(asn1), content, byteRange);
     expect(result).toEqual({ ok: false, reason: 'WEAK_OR_UNSUPPORTED_DIGEST_ALGORITHM' });
+  });
+});
+
+/** A real, correctly-signed detached CMS whose signer holds an ECDSA P-256
+ * key -- built with pkijs/WebCrypto, since node-forge can't create (or even
+ * parse) non-RSA certificates. */
+async function buildEcdsaSignedCmsDer(content: Buffer): Promise<Buffer> {
+  const crypto = pkijs.getCrypto(true);
+  const keys = (await crypto.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+    'sign',
+    'verify',
+  ])) as CryptoKeyPair;
+
+  const cert = new pkijs.Certificate();
+  cert.version = 2;
+  cert.serialNumber = new asn1js.Integer({ value: 7 });
+  const name = new pkijs.AttributeTypeAndValue({
+    type: '2.5.4.3',
+    value: new asn1js.BmpString({ value: 'ECDSA Signer' }),
+  });
+  cert.issuer.typesAndValues.push(name);
+  cert.subject.typesAndValues.push(name);
+  cert.notBefore.value = new Date('2024-01-01T00:00:00Z');
+  cert.notAfter.value = new Date('2030-01-01T00:00:00Z');
+  await cert.subjectPublicKeyInfo.importKey(keys.publicKey);
+  await cert.sign(keys.privateKey, 'SHA-256');
+
+  const signedData = new pkijs.SignedData({
+    version: 1,
+    encapContentInfo: new pkijs.EncapsulatedContentInfo({ eContentType: '1.2.840.113549.1.7.1' }),
+    signerInfos: [
+      new pkijs.SignerInfo({
+        version: 1,
+        sid: new pkijs.IssuerAndSerialNumber({
+          issuer: cert.issuer,
+          serialNumber: cert.serialNumber,
+        }),
+      }),
+    ],
+    certificates: [cert],
+  });
+  await signedData.sign(keys.privateKey, 0, 'SHA-256', new Uint8Array(content).buffer);
+
+  const contentInfo = new pkijs.ContentInfo({
+    contentType: '1.2.840.113549.1.7.2',
+    content: signedData.toSchema(true),
+  });
+  return Buffer.from(contentInfo.toSchema().toBER(false));
+}
+
+describe('verifySignerInfoSignature — non-RSA signer keys', () => {
+  it('reports an ECDSA signer as an unsupported key algorithm, not as a verification error', async () => {
+    const content = Buffer.from('ECDSA-signed PDF bytes', 'utf8');
+    const cmsDer = await buildEcdsaSignedCmsDer(content);
+    const byteRange: [number, number, number, number] = [0, content.length, content.length, 0];
+
+    expect(verifySignerInfoSignature(cmsDer, content, byteRange)).toEqual({
+      ok: false,
+      reason: 'UNSUPPORTED_KEY_ALGORITHM',
+      keyAlgorithm: 'ECDSA',
+    });
   });
 });

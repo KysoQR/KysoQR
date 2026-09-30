@@ -1,0 +1,926 @@
+openapi: 3.1.0
+info:
+  title: KysoQR API
+  version: 1.0.0
+  license:
+    name: MIT
+    identifier: MIT
+  description: |
+    KysoQR's HTTP API: sign PDFs via QR code (through CAS e-sign) and verify the digital signatures in a PDF.
+
+    Written for both developers and AI agents. This spec is the source of truth for requests/responses;
+    if it disagrees with the code, the code wins (every endpoint lists its source files). Download the spec:
+    [`/openapi/en.yaml`](/openapi/en.yaml) · [`/openapi/vi.yaml`](/openapi/vi.yaml) — both import straight into Postman.
+
+    ## End-to-end signing flow
+
+    1. `POST /api/sign/request` → get `signRequestId`, `qrContent`.
+    2. Render `qrContent` as a QR code; the signer scans it with the **Cas ID** app and approves.
+    3. `GET /api/sign/status?signRequestId=…` — poll every 4 seconds (on `429`, wait per `Retry-After`).
+       `PENDING`/`ACCEPTED` → keep polling; `SIGNED` → `identityKey`, `orgIdSigned` available; `REJECTED`/`FAILED`/`EXPIRED` → stop.
+    4. `GET /api/sign/download?identityKey=…` → the signed PDF.
+    5. (optional) `GET /api/verify/signing-round/{orgIdSigned}` → CAS's record of the signing round.
+    6. (optional) `POST /api/verify/upload` with the downloaded file → cryptographic signature verification.
+
+    ## Common conventions
+
+    - **Authentication:** none. Every route is public. No CORS headers, so browsers can only call from the same origin; other servers can call directly.
+    - **Error body:** `{ error, message, detail? }` (schema `ApiError`). Branch on `error`, not on `message`.
+      `detail` only appears on `502` errors from routes that call CAS; it's absent when the error didn't come from CAS and wasn't a timeout.
+    - **Per-IP rate limits** (sign/request 20, sign/status 60, sign/download 20, verify/upload 20, verify/signing-round 30 requests / 60 seconds).
+      Exceeding one → `429 RATE_LIMITED` with a `Retry-After` header. The IP comes from `CF-Connecting-IP`, otherwise the last entry of `X-Forwarded-For`.
+      Counters live in each server process's memory. Not the same as `429 CAS_RATE_LIMITED` (CAS limiting KysoQR's account, no `Retry-After`).
+    - **Missing CAS configuration:** the 4 routes that call CAS return `500 CAS_NOT_CONFIGURED` if the server lacks `CAS_ESIGN_BASE_URL`, `CAS_ESIGN_CLIENT_ID` or `CAS_ESIGN_API_KEY`. `POST /api/verify/upload` doesn't need them.
+
+    ## CAS e-sign integration
+
+    KysoQR doesn't sign anything itself; signing (private key, HSM) is done by CAS e-sign. CAS's official docs:
+    [cas.so/general/api/product-esign](https://cas.so/general/api/product-esign).
+
+    | KysoQR route | CAS API | Timeout |
+    |---|---|---|
+    | `POST /api/sign/request` | `POST /esign/request-document` (multipart) | 30 seconds |
+    | `GET /api/sign/status` | `POST /esign/request-status` | 10 seconds |
+    | `GET /api/sign/download` | `POST /esign/download-file` | 30 seconds |
+    | `GET /api/verify/signing-round/{orgIdSigned}` | `GET /esign/signing-round/{orgIdSigned}` | 10 seconds |
+
+    - Headers sent to CAS: `x-client-id` = `CAS_ESIGN_CLIENT_ID`, `x-secret-key` = `CAS_ESIGN_API_KEY`. No automatic retries.
+    - CAS's official states: `NEW`, `ACCEPTED`, `REJECTED`, `COMPLETED`. `FAILED`/`CANCELLED`/`CANCELED`/`EXPIRED` are handled defensively only.
+    - `identityKey`/`identityKeyExpiresAt` are only set when `COMPLETED`. `orgIdSigned` and `expiresIn` aren't officially documented by CAS.
+    - Y-axis flip: KysoQR uses the top edge from the page top; CAS uses the bottom edge from the page bottom: `yRatio_CAS = 1 − yRatio − heightRatio` (`SignatureField.toCasConvention()`).
+    - `documentName` = file name without `.pdf`, control characters removed, max 240 characters; shorter than 10 gets ` - KysoQR` appended (`lib/documentName.ts`).
+    - CAS errors with special handling: HTTP 429 → `CAS_RATE_LIMITED`; `E_SIGN_PERSON_NOT_FOUND` → automatic QR-only resubmit;
+      `E_SIGN_CERTIFICATE_NOT_FOUND` → `CAS_CERTIFICATE_NOT_FOUND`; `E_SIGN_SIGNING_ROUND_NOT_FOUND` → `200 { signingRound: null }`.
+    - Server egress: the host in `CAS_ESIGN_BASE_URL`, plus the AIA/OCSP/CRL hosts listed on certificates (via `lib/verification/guardedFetch.ts`, which blocks internal IPs).
+
+    Source: `lib/cas/CasEsignProvider.ts`, `lib/cas/casPayload.ts`, `lib/casErrorDetail.ts`, `lib/mapCasState.ts`, `lib/env.ts`.
+  contact:
+    name: KysoQR on GitHub
+    url: https://github.com/KysoQR/KysoQR
+
+servers:
+  - url: /
+    description: The server hosting this page
+
+tags:
+  - name: Signing
+    description: Create signing requests, track their status and download signed files via CAS e-sign.
+  - name: Verification
+    description: Verify the digital signatures in a PDF and look up signing rounds.
+
+paths:
+  /api/sign/request:
+    post:
+      tags: [Signing]
+      operationId: createSignRequest
+      summary: Create a signing request
+      description: |
+        Creates a signing request on CAS for one PDF and returns the QR content for the signer to scan with the **Cas ID** app.
+        `signRequestId` is generated by KysoQR (UUID v4). The server stores nothing: the file goes straight to CAS within the same request.
+
+        If `identificationNumber` is set and CAS returns `E_SIGN_PERSON_NOT_FOUND` (the ID isn't registered with Cas ID),
+        the server resubmits **once** as QR-only, keeping the same `signRequestId`; the caller still gets `200`.
+
+        **Note:** trying this request out creates a real signing request on CAS.
+
+        Source: `app/api/sign/request/route.ts`, `lib/domain/SignatureField.ts`, `lib/domain/CasSignerConfig.ts`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, signatureFields]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: |
+                    The PDF to sign, max **10 MiB** (10485760 bytes, CAS's limit).
+                    Must satisfy all 3: name ends in `.pdf`, content type `application/pdf`, first 5 bytes are `%PDF-`.
+                signatureFields:
+                  type: string
+                  contentMediaType: application/json
+                  contentSchema:
+                    type: array
+                    minItems: 1
+                    items:
+                      $ref: '#/components/schemas/SignatureFieldInput'
+                  description: |
+                    JSON array of signature boxes (see schema `SignatureFieldInput`). At least 1; no limit per page.
+                    Coordinates are 0–1 fractions, origin at the page's top-left corner.
+                  example: '[{"page":1,"xRatio":0.52,"yRatio":0.78,"widthRatio":0.34,"heightRatio":0.1}]'
+                signerType:
+                  type: string
+                  enum: [individual, enterprise]
+                  default: individual
+                  description: Signer type. Any other value → `400 INVALID_SIGNER_CONFIG`.
+                identificationNumber:
+                  type: string
+                  pattern: '^\d{9}$|^\d{12}$'
+                  description: |
+                    National ID: CCCD (12 digits) or CMND (9 digits). When set, CAS also sends a push notification to that person's Cas ID app.
+                    Leave empty for QR only. Deliberately has no sample value, so a request copied from these docs never notifies a real person by accident.
+                taxCode:
+                  type: string
+                  pattern: '^\d{10}$|^\d{10}-\d{3}$'
+                  description: Tax code. **Required when `signerType=enterprise`** (missing → `400 INVALID_SIGNER_CONFIG`, message `taxCode is required for enterprise signers`); ignored for individuals. 10 digits, or 10 digits + `-` + 3 digits.
+                organizationName:
+                  type: string
+                  description: Organization name, only used when `signerType=enterprise`. Sent to CAS when non-empty.
+                representativeName:
+                  type: string
+                  description: Legal representative, only used when `signerType=enterprise`. Validated but **never sent to CAS**.
+                language:
+                  type: string
+                  enum: [vi, en]
+                  default: vi
+                  description: Display language on the CAS side. Any other value → `400 INVALID_LANGUAGE`.
+            encoding:
+              file:
+                contentType: application/pdf
+      responses:
+        '200':
+          description: Signing request created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignRequestResponse'
+              examples:
+                success:
+                  summary: Success
+                  value:
+                    signRequestId: fd2d7767-29b3-4de3-98f2-31fb1ecfb8f0
+                    qrContent: https://scan2grant.bankhub.vn?signToken=eyJhbGciOi...
+                    state: NEW
+        '400':
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                invalid_pdf:
+                  summary: Not a PDF
+                  value: { error: INVALID_PDF, message: Uploaded file is not a valid PDF }
+                too_large:
+                  summary: File over 10 MiB
+                  value: { error: DOCUMENT_TOO_LARGE_FOR_CAS, message: File exceeds the 10MB limit CAS enforces }
+                invalid_signature_fields:
+                  summary: Bad signatureFields
+                  value: { error: INVALID_SIGNATURE_FIELDS, message: 'widthRatio must be between 0.16 and 0.6, got 0.9' }
+                invalid_signer_config:
+                  summary: Bad signer details
+                  value: { error: INVALID_SIGNER_CONFIG, message: identificationNumber must be 9 or 12 digits }
+                enterprise_missing_tax_code:
+                  summary: Enterprise signer without a tax code
+                  value: { error: INVALID_SIGNER_CONFIG, message: taxCode is required for enterprise signers }
+                invalid_language:
+                  summary: Bad language
+                  value: { error: INVALID_LANGUAGE, message: 'language must be "vi" or "en"' }
+                no_file:
+                  summary: Missing file
+                  value: { error: NO_FILE_UPLOADED, message: 'Missing required "file" field' }
+          x-error-codes:
+            - INVALID_MULTIPART
+            - NO_FILE_UPLOADED
+            - INVALID_PDF
+            - DOCUMENT_TOO_LARGE_FOR_CAS
+            - INVALID_SIGNATURE_FIELDS
+            - INVALID_SIGNER_CONFIG
+            - INVALID_LANGUAGE
+        '429':
+          $ref: '#/components/responses/TooManyRequestsCas'
+        '500':
+          $ref: '#/components/responses/CasNotConfigured'
+        '502':
+          description: CAS returned an error or didn't respond in time.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                submit_failed:
+                  summary: CAS error
+                  value:
+                    error: CAS_SUBMIT_FAILED
+                    message: Không thể gửi yêu cầu ký. Vui lòng thử lại sau.
+                    detail: { casStatus: 400, casRequestId: "-CwlQfsQfdim_y2q" }
+                timeout:
+                  summary: CAS timed out
+                  value:
+                    error: CAS_SUBMIT_FAILED
+                    message: CAS không phản hồi kịp thời. Vui lòng thử lại sau.
+                    detail: { timeout: true }
+                certificate_not_found:
+                  summary: CAS found no digital certificate
+                  value:
+                    error: CAS_CERTIFICATE_NOT_FOUND
+                    message: Không tìm thấy thông tin người dùng bên CAS.
+                    detail: { casErrorCode: E_SIGN_CERTIFICATE_NOT_FOUND }
+          x-error-codes: [CAS_SUBMIT_FAILED, CAS_CERTIFICATE_NOT_FOUND]
+
+  /api/sign/status:
+    get:
+      tags: [Signing]
+      operationId: getSignStatus
+      summary: Look up a signing request's status
+      description: |
+        A pass-through proxy to CAS's `request-status`, no caching.
+
+        Recommended polling: every 4 seconds; on `429` wait per `Retry-After` (or 8 seconds); on other errors wait 6 seconds;
+        stop once `status` is `SIGNED`, `REJECTED`, `FAILED` or `EXPIRED`.
+
+        | `rawState` (CAS) | `status` | Action |
+        |---|---|---|
+        | `NEW` | `PENDING` | Keep polling |
+        | `ACCEPTED` | `ACCEPTED` | Keep polling |
+        | `COMPLETED` | `SIGNED` | Stop, download with `identityKey` |
+        | `REJECTED` | `REJECTED` | Stop |
+        | `FAILED`, `CANCELLED`, `CANCELED` (defensive) | `FAILED` | Stop |
+        | `EXPIRED` (defensive) | `EXPIRED` | Stop |
+        | anything else | `PENDING` | Keep polling |
+
+        Source: `app/api/sign/status/route.ts`, `lib/mapCasState.ts`.
+      parameters:
+        - name: signRequestId
+          in: query
+          required: true
+          description: 'The `signRequestId` from `POST /api/sign/request`. Only checked for presence, not format.'
+          schema:
+            type: string
+          example: fd2d7767-29b3-4de3-98f2-31fb1ecfb8f0
+      responses:
+        '200':
+          description: Current status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignStatusResponse'
+              examples:
+                pending:
+                  summary: Waiting for the signer
+                  value: { status: PENDING, rawState: NEW, signedAt: null, identityKeyExpiresAt: null }
+                signed:
+                  summary: Signed
+                  value:
+                    status: SIGNED
+                    rawState: COMPLETED
+                    signedAt: '2026-09-29T03:15:42.000Z'
+                    identityKey: 6f1c2b8e-4a0d-4f7e-9b21-3c5d7e9f1a2b
+                    identityKeyExpiresAt: '2026-09-30T03:15:42.000Z'
+                    orgIdSigned: kysoqr.com#3bLzsA
+                rejected:
+                  summary: Signer declined
+                  value: { status: REJECTED, rawState: REJECTED, signedAt: null, identityKeyExpiresAt: null }
+        '400':
+          description: Missing `signRequestId`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                missing:
+                  summary: Missing signRequestId
+                  value: { error: MISSING_SIGN_REQUEST_ID, message: signRequestId query param is required }
+          x-error-codes: [MISSING_SIGN_REQUEST_ID]
+        '429':
+          $ref: '#/components/responses/TooManyRequestsCas'
+        '500':
+          $ref: '#/components/responses/CasNotConfigured'
+        '502':
+          description: CAS returned an error or didn't respond in time.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                status_failed:
+                  summary: CAS error
+                  value:
+                    error: CAS_STATUS_FAILED
+                    message: Không thể kiểm tra trạng thái ký. Vui lòng thử lại sau.
+                    detail: { casStatus: 400 }
+                timeout:
+                  summary: CAS timed out
+                  value: { error: CAS_STATUS_FAILED, message: CAS không phản hồi kịp thời. Vui lòng thử lại sau., detail: { timeout: true } }
+          x-error-codes: [CAS_STATUS_FAILED]
+
+  /api/sign/download:
+    get:
+      tags: [Signing]
+      operationId: downloadSignedPdf
+      summary: Download the signed PDF
+      description: |
+        Downloads the signed PDF from CAS. The server streams it straight back and keeps no copy.
+
+        Each `identityKey` can only be used a limited number of times on the CAS side (observed: 5; CAS hasn't published an
+        official number and doesn't report how many uses remain), and it expires at `identityKeyExpiresAt`. Save the file after downloading.
+
+        Source: `app/api/sign/download/route.ts`, `lib/cas/casPayload.ts`.
+      parameters:
+        - name: identityKey
+          in: query
+          required: true
+          description: 'The `identityKey` from `GET /api/sign/status` once `status = SIGNED`. **Not** the `signRequestId`.'
+          schema:
+            type: string
+          example: 6f1c2b8e-4a0d-4f7e-9b21-3c5d7e9f1a2b
+      responses:
+        '200':
+          description: The signed PDF as binary.
+          headers:
+            Content-Disposition:
+              description: Always `attachment; filename="signed.pdf"`.
+              schema:
+                type: string
+                example: attachment; filename="signed.pdf"
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Missing `identityKey`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                missing:
+                  summary: Missing identityKey
+                  value: { error: MISSING_IDENTITY_KEY, message: identityKey query param is required }
+          x-error-codes: [MISSING_IDENTITY_KEY]
+        '429':
+          $ref: '#/components/responses/TooManyRequestsCas'
+        '500':
+          $ref: '#/components/responses/CasNotConfigured'
+        '502':
+          description: '`identityKey` wrong/expired/used up, CAS returned something that is not a PDF, or CAS timed out.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                download_failed:
+                  summary: CAS error
+                  value:
+                    error: CAS_DOWNLOAD_FAILED
+                    message: Không thể tải file đã ký. Vui lòng thử lại sau.
+                    detail: { casStatus: 400 }
+                timeout:
+                  summary: CAS timed out
+                  value: { error: CAS_DOWNLOAD_FAILED, message: CAS không phản hồi kịp thời. Vui lòng thử lại sau., detail: { timeout: true } }
+          x-error-codes: [CAS_DOWNLOAD_FAILED]
+
+  /api/verify/upload:
+    post:
+      tags: [Verification]
+      operationId: verifyPdfUpload
+      summary: Verify the signatures in a PDF
+      description: |
+        Cryptographically verifies every digital signature in a PDF: the CMS signature, content integrity, the certificate chain up
+        to a trusted root CA (fetching intermediates via AIA) and revocation status (OCSP/CRL). **Independent of CAS**, needs no env vars,
+        and verifies PDFs signed by any system.
+
+        - A file with no signatures → `{ "signatures": [] }`.
+        - Only the **first 10 signatures** are verified; the rest are skipped silently.
+        - Optional fields are **absent** (not `null`) when they don't apply.
+
+        ### Supported signatures
+
+        | | Supported | Not supported yet |
+        |---|---|---|
+        | Signing device | USB token, HSM / remote signing (e.g. Cas ID), SIM PKI — all verified the same way | — |
+        | Format (SubFilter) | `adbe.pkcs7.detached`, `ETSI.CAdES.detached` | Anything else, e.g. `ETSI.RFC3161` (document timestamp) → `UNSUPPORTED_SUBFILTER` for that entry only |
+        | Key / digest | RSA with SHA-256/384/512 (SHA-1 only for signatures without signed attributes) | ECDSA and other keys → `UNSUPPORTED_ALGORITHM` |
+        | Trusted CAs | Chains to a bundled Vietnam National Root CA (MIC; NEAC: USB token, remote signing, Mobile PKI); intermediates fetched via AIA | Other roots → `ROOT_NOT_TRUSTED` |
+        | Timestamps / LTV | — | Not validated |
+
+        Source: `app/api/verify/upload/route.ts`, `lib/verification/verifyPdfSignatures.ts`, `lib/verification/certChainVerifier.ts`, `lib/verification/revocationChecker.ts`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: |
+                    The PDF to verify, max **20 MiB** (20971520 bytes).
+                    Must satisfy all 3: name ends in `.pdf`, content type `application/pdf`, first 5 bytes are `%PDF-`.
+            encoding:
+              file:
+                contentType: application/pdf
+      responses:
+        '200':
+          description: Verification results, one item per signature in document order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyUploadResponse'
+              examples:
+                valid:
+                  summary: Valid signature
+                  value:
+                    signatures:
+                      - status: SIGNED_VALID
+                        message: The signature, content, and certificate chain are all valid.
+                        signedAt: '2026-09-29T03:15:40.000Z'
+                        certificate:
+                          subject: CN=NGUYEN VAN A, C=VN
+                          issuer: CN=CA Example, O=Example CA, C=VN
+                          serialNumber: 5a1f0c
+                          validFrom: '2026-01-01T00:00:00.000Z'
+                          validTo: '2027-01-01T00:00:00.000Z'
+                        certificateChain:
+                          - index: 0
+                            subject: CN=NGUYEN VAN A, C=VN
+                            issuer: CN=CA Example, O=Example CA, C=VN
+                            serialNumber: 5a1f0c
+                            validFrom: '2026-01-01T00:00:00.000Z'
+                            validTo: '2027-01-01T00:00:00.000Z'
+                            isCa: false
+                            ocsp: { status: not_revoked, url: 'http://ocsp.example.vn' }
+                            crl: { status: unavailable, url: null }
+                          - index: 1
+                            subject: CN=CA Example, O=Example CA, C=VN
+                            issuer: CN=CA Example, O=Example CA, C=VN
+                            serialNumber: '01'
+                            validFrom: '2020-01-01T00:00:00.000Z'
+                            validTo: '2040-01-01T00:00:00.000Z'
+                            isCa: true
+                            ocsp: null
+                            crl: null
+                        certificateExpiredNow: false
+                        contentIntact: true
+                unsigned:
+                  summary: No signatures in the file
+                  value: { signatures: [] }
+                modified:
+                  summary: Content modified after signing
+                  value:
+                    signatures:
+                      - status: CONTENT_DIGEST_MISMATCH
+                        message: The PDF content does not match what was actually signed.
+                        contentIntact: false
+        '400':
+          description: Invalid file.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                too_large:
+                  summary: File over 20 MiB (checked before INVALID_PDF)
+                  value: { error: FILE_TOO_LARGE, message: File exceeds the 20MB limit }
+                invalid_pdf:
+                  summary: Not a PDF
+                  value: { error: INVALID_PDF, message: Uploaded file is not a valid PDF }
+                no_file:
+                  summary: Missing file
+                  value: { error: NO_FILE_UPLOADED, message: 'Missing required "file" field' }
+          x-error-codes: [INVALID_MULTIPART, NO_FILE_UPLOADED, FILE_TOO_LARGE, INVALID_PDF]
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          description: |
+            Unexpected failure while processing the whole file. The server fails instead of returning an empty list,
+            so this can't be mistaken for "the file has no signatures". This route never returns `detail`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                failed:
+                  summary: Verification failed
+                  value: { error: VERIFICATION_FAILED, message: Failed to verify the uploaded PDF }
+          x-error-codes: [VERIFICATION_FAILED]
+
+  /api/verify/signing-round/{orgIdSigned}:
+    get:
+      tags: [Verification]
+      operationId: getSigningRound
+      summary: Look up a signing round by code
+      description: |
+        Looks up CAS's record of a signing round by its `orgIdSigned` code. This is a **lookup of data CAS stored**, not
+        cryptographic verification; to verify the signatures in a file, use `POST /api/verify/upload`.
+
+        The fields inside `signingRound` come from CAS and are passed through as-is.
+
+        Source: `app/api/verify/signing-round/[orgIdSigned]/route.ts`, `lib/cas/CasProvider.ts` (`SigningRoundDetail`).
+      parameters:
+        - name: orgIdSigned
+          in: path
+          required: true
+          description: |
+            The signing-round code, from `orgIdSigned` in `GET /api/sign/status` (also printed on the signed PDF).
+            May contain a prefix such as `kysoqr.com#`. **Must be URL-encoded** (`#` → `%23`), otherwise everything after `#` is dropped.
+          schema:
+            type: string
+          example: kysoqr.com#3bLzsA
+      responses:
+        '200':
+          description: '`signingRound` is `null` when not found (still HTTP 200, not an error).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SigningRoundResponse'
+              examples:
+                found:
+                  summary: Found (illustrative values; real content comes from CAS)
+                  value:
+                    signingRound:
+                      device: {}
+                      signer: { displayName: NGUYEN VAN A }
+                      authMethod: Cas ID
+                      signedAt: '2026-09-29T03:15:42.000Z'
+                      certificate:
+                        issuer: { commonName: CA Example, organization: Example CA, country: VN }
+                        signer: { commonName: NGUYEN VAN A, country: VN, taxOrCitizenId: 'CCCD:001099012345' }
+                        documentIntegrity: Not modified
+                        validFrom: '2026-01-01T00:00:00.000Z'
+                        validTo: '2027-01-01T00:00:00.000Z'
+                        signatureValidity: Valid at signing time
+                        hasTimestamp: 'Yes'
+                        signedAtLong: 10:15:42 29/09/2026
+                not_found:
+                  summary: Not found
+                  value: { signingRound: null }
+        '429':
+          $ref: '#/components/responses/TooManyRequestsCas'
+        '500':
+          $ref: '#/components/responses/CasNotConfigured'
+        '502':
+          description: CAS returned an error or didn't respond in time.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                lookup_failed:
+                  summary: CAS error
+                  value: { error: CAS_SIGNING_ROUND_FAILED, message: Không thể tra cứu phiên ký. Vui lòng thử lại sau., detail: { casStatus: 500 } }
+                timeout:
+                  summary: CAS timed out
+                  value: { error: CAS_SIGNING_ROUND_FAILED, message: CAS không phản hồi kịp thời. Vui lòng thử lại sau., detail: { timeout: true } }
+          x-error-codes: [CAS_SIGNING_ROUND_FAILED]
+
+components:
+  headers:
+    RetryAfter:
+      description: Seconds to wait before retrying. Only present with `RATE_LIMITED`.
+      schema:
+        type: integer
+        minimum: 1
+      example: 3
+
+  responses:
+    TooManyRequests:
+      description: KysoQR's rate limit exceeded.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            rate_limited:
+              summary: KysoQR limit
+              value: { error: RATE_LIMITED, message: Too many requests }
+      x-error-codes: [RATE_LIMITED]
+    TooManyRequestsCas:
+      description: |
+        `RATE_LIMITED`: KysoQR's rate limit exceeded (has a `Retry-After` header).
+        `CAS_RATE_LIMITED`: CAS is limiting KysoQR's account (no `Retry-After`).
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            rate_limited:
+              summary: KysoQR limit
+              value: { error: RATE_LIMITED, message: Too many requests }
+            cas_rate_limited:
+              summary: CAS limit
+              value: { error: CAS_RATE_LIMITED, message: CAS is rate-limiting this client }
+      x-error-codes: [RATE_LIMITED, CAS_RATE_LIMITED]
+    CasNotConfigured:
+      description: The server is missing CAS env vars (`CAS_ESIGN_BASE_URL`, `CAS_ESIGN_CLIENT_ID`, `CAS_ESIGN_API_KEY`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            not_configured:
+              summary: CAS not configured
+              value: { error: CAS_NOT_CONFIGURED, message: Máy chủ chưa được cấu hình đầy đủ để ký số. Vui lòng liên hệ quản trị viên. }
+      x-error-codes: [CAS_NOT_CONFIGURED]
+
+  schemas:
+    ApiError:
+      type: object
+      description: Shared body of every JSON error.
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Stable error code; branch on this in code. Each route's list of codes is in its response section.
+          example: INVALID_PDF
+        message:
+          type: string
+          description: Human-readable (Vietnamese or English depending on the error). Do not branch on it.
+        detail:
+          $ref: '#/components/schemas/CasErrorDetail'
+
+    CasErrorDetail:
+      description: Only on 502 errors from routes that call CAS. Absent when the error didn't come from CAS and wasn't a timeout.
+      oneOf:
+        - title: CAS returned an HTTP error
+          type: object
+          properties:
+            casErrorCode:
+              type: string
+              description: CAS's error code, e.g. `E_SIGN_CERTIFICATE_NOT_FOUND`.
+            casStatus:
+              type: integer
+              description: HTTP status returned by CAS.
+            casErrorType:
+              type: string
+              description: CAS's error type.
+            casRequestId:
+              type: string
+              description: CAS's `requestId`, useful when raising an issue with CAS.
+        - title: CAS timed out
+          type: object
+          required: [timeout]
+          properties:
+            timeout:
+              type: boolean
+              const: true
+
+    SignatureFieldInput:
+      type: object
+      description: One signature box. Coordinates are 0–1 fractions of the page, origin at the top-left (DOM convention). The server converts to CAS's convention.
+      required: [page, xRatio, yRatio, widthRatio, heightRatio]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          description: Page number, 1-based.
+        xRatio:
+          type: number
+          description: Left edge, from the page's left edge. Finite; clamped to 0–1.
+        yRatio:
+          type: number
+          description: '**Top** edge, from the page''s **top** edge. Finite; clamped to 0–1.'
+        widthRatio:
+          type: number
+          minimum: 0.16
+          maximum: 0.6
+          description: Box width.
+        heightRatio:
+          type: number
+          minimum: 0.055
+          maximum: 0.22
+          description: Box height.
+
+    SignRequestResponse:
+      type: object
+      required: [signRequestId, qrContent, state]
+      properties:
+        signRequestId:
+          type: string
+          format: uuid
+          description: Signing request ID, used with `GET /api/sign/status`.
+        qrContent:
+          type: string
+          description: Content to render as a QR code, like `https://scan2grant.bankhub.vn?signToken=…`.
+        state:
+          type: string
+          description: CAS's raw state right after creation, normally `NEW`.
+
+    SignStatusResponse:
+      type: object
+      required: [status, rawState, signedAt, identityKeyExpiresAt]
+      properties:
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, SIGNED, REJECTED, FAILED, EXPIRED]
+          description: Normalised status; branch on this field.
+        rawState:
+          type: string
+          description: 'CAS''s raw state: `NEW`, `ACCEPTED`, `REJECTED`, `COMPLETED`.'
+        signedAt:
+          type: [string, 'null']
+          format: date-time
+          description: When signing finished; `null` until signed.
+        identityKey:
+          type: string
+          description: Key for `GET /api/sign/download`. Only present when `status = SIGNED`; absent otherwise.
+        identityKeyExpiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: Expiry of `identityKey`. Set when `status = SIGNED`, otherwise `null`.
+        orgIdSigned:
+          type: string
+          description: Signing-round code for `GET /api/verify/signing-round/{orgIdSigned}`, e.g. `kysoqr.com#3bLzsA`. Not officially documented by CAS; may be absent.
+        expiresIn:
+          type: number
+          description: Time left on the signing request (seconds). Not officially documented by CAS; may be absent.
+
+    VerifyUploadResponse:
+      type: object
+      required: [signatures]
+      properties:
+        signatures:
+          type: array
+          description: One item per signature, in document order. At most 10 items.
+          items:
+            $ref: '#/components/schemas/VerificationResult'
+
+    VerificationResult:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [SIGNED_VALID, ROOT_NOT_TRUSTED, CONTENT_DIGEST_MISMATCH, SIGNATURE_INVALID, CHAIN_VALIDATION_FAILED, TRUST_STORE_NOT_CONFIGURED, UNSUPPORTED_SUBFILTER, UNSUPPORTED_ALGORITHM]
+          description: |
+            - `SIGNED_VALID`: signature, content and certificate chain are all valid.
+            - `ROOT_NOT_TRUSTED`: signature and content are cryptographically valid, but the root CA isn't in the server's trust store.
+            - `CONTENT_DIGEST_MISMATCH`: the content was modified after signing (or data was appended after the last signature).
+            - `SIGNATURE_INVALID`: the signature doesn't match the certificate, the signature structure is broken, or an unexpected error occurred verifying this signature.
+            - `CHAIN_VALIDATION_FAILED`: no certificate chain, or the chain is invalid.
+            - `TRUST_STORE_NOT_CONFIGURED`: the server has no root CAs in its trust store.
+            - `UNSUPPORTED_SUBFILTER`: this entry uses an unsupported format (e.g. an `ETSI.RFC3161` document timestamp). Only that entry is reported; the other signatures in the file are still verified. Has only `status`, `message` and possibly `signedAt`.
+            - `UNSUPPORTED_ALGORITHM`: the signer's key isn't RSA (e.g. ECDSA) and can't be verified yet; `message` names the algorithm.
+        message:
+          type: string
+          description: Fixed English sentence for the `status`.
+        signedAt:
+          type: string
+          format: date-time
+          description: From the CMS `signingTime`; falls back to the PDF's `/M`.
+        certificate:
+          $ref: '#/components/schemas/VerificationCertificate'
+        certificateChain:
+          type: array
+          description: Item 0 is the signer, the last item is the root; each item's issuer is the next item.
+          items:
+            $ref: '#/components/schemas/ChainCertInfo'
+        certificateChainRootNotInTrustStore:
+          type: boolean
+          const: true
+          description: Only present when `status = ROOT_NOT_TRUSTED`.
+        certificateExpiredNow:
+          type: boolean
+          description: The certificate has expired as of now. Informational only, doesn't change `status`.
+        contentIntact:
+          type: boolean
+          description: '`true`: content unchanged since signing. `false`: content was modified.'
+
+    VerificationCertificate:
+      type: object
+      required: [subject, issuer, serialNumber, validFrom, validTo]
+      properties:
+        subject:
+          type: string
+          description: Certificate subject (DN).
+        issuer:
+          type: string
+          description: Issuer (DN).
+        serialNumber:
+          type: string
+          description: Serial number.
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type: string
+          format: date-time
+
+    ChainCertInfo:
+      type: object
+      required: [index, subject, issuer, serialNumber, validFrom, validTo, isCa, ocsp, crl]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: Position in the chain, from 0.
+        subject:
+          type: string
+        issuer:
+          type: string
+        serialNumber:
+          type: string
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type: string
+          format: date-time
+        isCa:
+          type: boolean
+          description: Whether this is a CA certificate.
+        ocsp:
+          description: OCSP result against the issuer. `null` on the last item (root).
+          oneOf:
+            - $ref: '#/components/schemas/RevocationCheckResult'
+            - type: 'null'
+        crl:
+          description: CRL result against the issuer. `null` on the last item (root).
+          oneOf:
+            - $ref: '#/components/schemas/RevocationCheckResult'
+            - type: 'null'
+
+    RevocationCheckResult:
+      type: object
+      description: Informational only; never changes the signature's `status`.
+      required: [status, url]
+      properties:
+        status:
+          type: string
+          enum: [not_revoked, revoked, unavailable]
+          description: '`unavailable` = couldn''t check (no URL, network error, invalid response); it does not mean revoked.'
+        url:
+          type: [string, 'null']
+          description: The OCSP/CRL URL on the certificate, present even when the check failed; `null` when the certificate has no such URL.
+
+    SigningRoundResponse:
+      type: object
+      required: [signingRound]
+      properties:
+        signingRound:
+          description: '`null` when the signing round is not found.'
+          oneOf:
+            - $ref: '#/components/schemas/SigningRoundDetail'
+            - type: 'null'
+
+    SigningRoundDetail:
+      type: object
+      required: [device, signer, authMethod, signedAt, certificate]
+      properties:
+        device:
+          type: object
+          additionalProperties: true
+          description: Signing device info. CAS hasn't documented its structure; treat as arbitrary key–value pairs.
+        signer:
+          type: object
+          required: [displayName]
+          properties:
+            displayName:
+              type: string
+              description: Signer's display name.
+        authMethod:
+          type: string
+          description: Authentication method the signer used.
+        signedAt:
+          type: [string, 'null']
+          description: Signing time.
+        certificate:
+          type: object
+          required: [issuer, signer, documentIntegrity, validFrom, validTo, signatureValidity, hasTimestamp, signedAtLong]
+          properties:
+            issuer:
+              $ref: '#/components/schemas/SigningRoundCertParty'
+            signer:
+              $ref: '#/components/schemas/SigningRoundCertParty'
+            documentIntegrity:
+              type: string
+              description: 'CAS''s document-integrity assessment, e.g. `Không bị thay đổi` / `Not modified`.'
+            validFrom:
+              type: [string, 'null']
+            validTo:
+              type: [string, 'null']
+            signatureValidity:
+              type: string
+              description: 'CAS''s signature-validity assessment, e.g. `Hợp lệ tại thời điểm ký` / `Valid at signing time`.'
+            hasTimestamp:
+              type: string
+              description: 'Whether there is a timestamp, e.g. `Có` / `Yes`. **A string, not a boolean.**'
+            signedAtLong:
+              type: [string, 'null']
+              description: Signing time in CAS's long format.
+
+    SigningRoundCertParty:
+      type: object
+      required: [commonName, country]
+      properties:
+        commonName:
+          type: [string, 'null']
+        organization:
+          type: [string, 'null']
+          description: May be absent.
+        country:
+          type: [string, 'null']
+        taxOrCitizenId:
+          type: [string, 'null']
+          description: 'Tax code or national ID; may carry a `CCCD:`/`MST:` prefix. May be absent.'

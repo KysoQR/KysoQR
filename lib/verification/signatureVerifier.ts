@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
 import forge from 'node-forge';
-import { parseCmsMessage } from './cmsAsn1';
+import { parseCmsAsn1, parseCmsMessage } from './cmsAsn1';
 
 export type SignatureVerificationFailureReason =
   | 'MISSING_SIGNER_INFO'
   | 'MISSING_SIGNATURE'
   | 'LEAF_CERTIFICATE_NOT_FOUND'
   | 'WEAK_OR_UNSUPPORTED_DIGEST_ALGORITHM'
+  | 'UNSUPPORTED_KEY_ALGORITHM'
   | 'SIGNATURE_VERIFICATION_FAILED'
   | 'SIGNATURE_VERIFICATION_ERROR';
 
@@ -16,7 +17,75 @@ export type SignatureVerificationResult =
       ok: false;
       reason: SignatureVerificationFailureReason;
       leafCertificate?: forge.pki.Certificate;
+      /** Set with `UNSUPPORTED_KEY_ALGORITHM`: e.g. `ECDSA`, or the raw OID. */
+      keyAlgorithm?: string;
     };
+
+const RSA_ENCRYPTION_OID = '1.2.840.113549.1.1.1';
+
+/** Display names for the signer key algorithms this pipeline can't verify. */
+const UNSUPPORTED_KEY_ALGORITHM_NAMES: Record<string, string> = {
+  '1.2.840.10045.2.1': 'ECDSA',
+  '1.2.840.113549.1.1.10': 'RSASSA-PSS',
+  '1.2.840.10040.4.1': 'DSA',
+  '1.3.101.112': 'Ed25519',
+  '1.3.101.113': 'Ed448',
+};
+
+type RawAsn1 = forge.asn1.Asn1;
+
+function asn1Children(node: RawAsn1 | undefined): RawAsn1[] {
+  return node && Array.isArray(node.value) ? (node.value as RawAsn1[]) : [];
+}
+
+function asn1Oid(node: RawAsn1 | undefined): string | undefined {
+  return node && node.type === forge.asn1.Type.OID && typeof node.value === 'string'
+    ? forge.asn1.derToOid(node.value)
+    : undefined;
+}
+
+/**
+ * The signer certificate's public-key algorithm OID, read from the raw CMS
+ * ASN.1 tree -- NOT via `parseCmsMessage`, because node-forge's certificate
+ * parser throws on any non-RSA key ("OID is not RSA"). Without this, an
+ * ECDSA-signed PDF surfaced as a generic verification error (reported to the
+ * user as an *invalid* signature) instead of an unsupported algorithm.
+ *
+ * The signer certificate is matched by the SignerInfo's serial number; if
+ * that can't be resolved (e.g. a SubjectKeyIdentifier `sid`), the first
+ * embedded certificate is used. Returns undefined when the structure can't
+ * be read -- the normal verification path then reports the problem.
+ */
+function findSignerKeyAlgorithmOid(cmsDer: Buffer): string | undefined {
+  try {
+    const contentInfo = parseCmsAsn1(cmsDer);
+    const signedData = asn1Children(asn1Children(contentInfo)[1])[0];
+    const signedDataFields = asn1Children(signedData);
+    const certificateSet = signedDataFields.find(
+      (node) => node.tagClass === forge.asn1.Class.CONTEXT_SPECIFIC && node.type === 0
+    );
+    const certificates = asn1Children(certificateSet);
+    const signerInfos = asn1Children(signedDataFields[signedDataFields.length - 1]);
+    const sid = asn1Children(signerInfos[0])[1];
+    const sidSerial = asn1Children(sid)[1]?.value;
+
+    const tbsFields = (cert: RawAsn1) => {
+      const fields = asn1Children(asn1Children(cert)[0]);
+      // tbsCertificate starts with an optional explicit [0] version.
+      return fields[0]?.tagClass === forge.asn1.Class.CONTEXT_SPECIFIC ? fields.slice(1) : fields;
+    };
+    const signerCert =
+      certificates.find((cert) => sidSerial !== undefined && tbsFields(cert)[0]?.value === sidSerial) ??
+      certificates[0];
+    if (!signerCert) return undefined;
+
+    // tbsCertificate (after version): serial, signature, issuer, validity, subject, subjectPublicKeyInfo
+    const subjectPublicKeyInfo = tbsFields(signerCert)[5];
+    return asn1Oid(asn1Children(asn1Children(subjectPublicKeyInfo)[0])[0]);
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Digest algorithms strong enough to trust a document signature by. This is
@@ -192,6 +261,15 @@ export function verifySignerInfoSignature(
   pdfBytes: Buffer,
   byteRange: [number, number, number, number]
 ): SignatureVerificationResult {
+  const keyAlgorithmOid = findSignerKeyAlgorithmOid(cmsDer);
+  if (keyAlgorithmOid && keyAlgorithmOid !== RSA_ENCRYPTION_OID) {
+    return {
+      ok: false,
+      reason: 'UNSUPPORTED_KEY_ALGORITHM',
+      keyAlgorithm: UNSUPPORTED_KEY_ALGORITHM_NAMES[keyAlgorithmOid] ?? keyAlgorithmOid,
+    };
+  }
+
   try {
     const p7 = parseCmsMessage(cmsDer);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

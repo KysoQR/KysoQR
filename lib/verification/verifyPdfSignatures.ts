@@ -18,7 +18,8 @@ export type VerificationStatus =
   | 'ROOT_NOT_TRUSTED'
   | 'SIGNATURE_INVALID'
   | 'TRUST_STORE_NOT_CONFIGURED'
-  | 'UNSUPPORTED_SUBFILTER';
+  | 'UNSUPPORTED_SUBFILTER'
+  | 'UNSUPPORTED_ALGORITHM';
 
 export interface VerificationCertificate {
   subject: string;
@@ -74,6 +75,14 @@ async function verifyOneSignature(
     signedAt = extractSigningTimeFromCms(parseCmsMessage(cmsDer)) ?? dictSigningTime;
   } catch {
     // keep dictSigningTime fallback
+  }
+
+  if (!sigCheck.ok && sigCheck.reason === 'UNSUPPORTED_KEY_ALGORITHM') {
+    return {
+      status: 'UNSUPPORTED_ALGORITHM',
+      message: `The signature uses an unsupported key algorithm (${sigCheck.keyAlgorithm ?? 'unknown'}).`,
+      signedAt,
+    };
   }
 
   if (!sigCheck.ok) {
@@ -205,14 +214,6 @@ export async function verifyPdfSignatures(
   const extraction = extractAllCmsFromSignedPdf(pdfBytes);
   if (!extraction.ok) {
     if (extraction.error.kind === 'NO_SIGNATURE_FIELD_FOUND') return [];
-    if (extraction.error.kind === 'UNSUPPORTED_SUBFILTER') {
-      return [
-        {
-          status: 'UNSUPPORTED_SUBFILTER',
-          message: `The PDF uses an unsupported digital signature format (${extraction.error.subFilter ?? 'unknown'}).`,
-        },
-      ];
-    }
     return [
       {
         status: 'SIGNATURE_INVALID',
@@ -223,20 +224,42 @@ export async function verifyPdfSignatures(
 
   const values = extraction.values.slice(0, MAX_SIGNATURES_PER_DOCUMENT);
 
+  // Coverage is still judged on the newest entry of any kind (a PAdES-LTA
+  // document timestamp usually is the newest one), but the verdict is
+  // attached to the newest signature we actually verify -- otherwise bytes
+  // appended after an unsupported last entry would go unreported.
   const wholeFileCovered = isLastSignatureCoveringWholeFile(values, pdfBytes.length);
-  const lastIndex = values.length - 1;
+  let lastSupportedIndex = -1;
+  values.forEach((value, index) => {
+    if (value.supported) lastSupportedIndex = index;
+  });
 
   return Promise.all(
     values.map((value, index) =>
-      verifyOneSignature(
-        pdfBytes,
-        value,
-        trustStore,
-        index === lastIndex ? wholeFileCovered : true
-      ).catch((): VerificationResult => ({
-        status: 'SIGNATURE_INVALID',
-        message: 'An unexpected error occurred while verifying this signature.',
-      }))
+      value.supported
+        ? verifyOneSignature(
+            pdfBytes,
+            value,
+            trustStore,
+            index === lastSupportedIndex ? wholeFileCovered : true
+          ).catch((): VerificationResult => ({
+            status: 'SIGNATURE_INVALID',
+            message: 'An unexpected error occurred while verifying this signature.',
+          }))
+        : Promise.resolve(unsupportedSubFilterResult(value))
     )
   );
+}
+
+/** One entry whose SubFilter this pipeline can't verify -- reported on its
+ * own, without failing the other signatures in the document. */
+function unsupportedSubFilterResult(value: ExtractCmsSuccess): VerificationResult {
+  const isDocumentTimestamp = value.subFilter.toLowerCase() === 'etsi.rfc3161';
+  return {
+    status: 'UNSUPPORTED_SUBFILTER',
+    message: isDocumentTimestamp
+      ? 'Document timestamp (PAdES-LTA, ETSI.RFC3161): timestamps are not verified yet.'
+      : `The PDF uses an unsupported digital signature format (${value.subFilter}).`,
+    signedAt: value.dictSigningTime,
+  };
 }

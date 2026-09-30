@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslation } from 'react-i18next';
+import { Icon } from '@iconify/react';
 import TextField from './TextField';
 
 export type SignerKind = 'individual' | 'enterprise';
@@ -86,6 +87,19 @@ export function SignerConfigPanel({
             );
           })}
         </div>
+        {/* One prominent line instead of a faint "Tuỳ chọn" badge on every
+            field: individuals may leave everything empty (QR-only), while an
+            enterprise signer must provide a tax code. */}
+        <p className="mt-1.5 flex items-start gap-1 text-xs text-error-text">
+          <Icon icon="lucide:info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            {t(
+              isEnterprise
+                ? 'signerConfig.enterpriseTaxCodeRequired'
+                : 'signerConfig.optionalNotice'
+            )}
+          </span>
+        </p>
       </div>
 
       {isEnterprise ? (
@@ -101,33 +115,22 @@ export function SignerConfigPanel({
             error={taxCodeError}
             hint={t('signerConfig.taxCodeHint')}
           />
-          <TextField
+          {/* <TextField
             id="signer-organization"
             label={t('signerConfig.organizationLabel')}
             value={value.organizationName}
             onChange={(next) => set('organizationName', next)}
             disabled={disabled}
             placeholder={t('signerConfig.organizationPlaceholder')}
-          />
-          <TextField
+          /> */}
+          {/* <TextField
             id="signer-representative"
             label={t('signerConfig.representativeLabel')}
             value={value.representativeName}
             onChange={(next) => set('representativeName', next)}
             disabled={disabled}
             placeholder={t('signerConfig.representativePlaceholder')}
-          />
-          <TextField
-            id="signer-cccd"
-            label={t('signerConfig.representativeCccdLabel')}
-            value={value.identificationNumber}
-            onChange={(next) => set('identificationNumber', next)}
-            placeholder="077088002778"
-            inputMode="numeric"
-            disabled={disabled}
-            error={cccdError}
-            hint={t('signerConfig.cccdHint')}
-          />
+          /> */}
         </>
       ) : (
         <>
@@ -140,20 +143,19 @@ export function SignerConfigPanel({
             inputMode="numeric"
             disabled={disabled}
             error={cccdError}
-            hint={t('signerConfig.cccdHint')}
           />
-          <TextField
+          {/* <TextField
             id="signer-full-name"
             label={t('signerConfig.fullNameLabel')}
             value={value.representativeName}
             onChange={(next) => set('representativeName', next)}
             disabled={disabled}
             placeholder={t('signerConfig.fullNamePlaceholder')}
-          />
+          /> */}
         </>
       )}
 
-      {!value.identificationNumber && (
+      {!isEnterprise && !value.identificationNumber && (
         <div className="rounded-md border border-warning-border bg-warning-bg px-3 py-1.5 text-[11px] text-warning-text">
           {t('signerConfig.noCccdWarning')}
         </div>
@@ -165,19 +167,17 @@ export function SignerConfigPanel({
 export default SignerConfigPanel;
 
 /** Ported from x-sign-web/src/features/documents/casSignerForm.ts.
- * Nothing here is REQUIRED -- an empty form is valid for both signer kinds.
- * Real signer identity is confirmed afterwards in the CAS ID app during the
- * QR step (QR-only signing is a deliberate, supported path), so this only
- * ever rejects a value that's actually PRESENT but malformed (a typo'd CCCD
- * or tax code), never an empty field. `organizationName`/`representativeName`
- * are never checked at all for the same reason `taxCode` isn't required --
- * CAS's own submit call only ever receives `organizationName` when
- * non-empty (and never `representativeName` at all), so neither is
- * something CAS actually requires to accept the request. */
+ * For an individual nothing is REQUIRED -- real signer identity is confirmed
+ * afterwards in the CAS ID app during the QR step (QR-only signing is a
+ * deliberate, supported path), so only a CCCD that's PRESENT but malformed is
+ * rejected. An enterprise signer MUST provide a well-formed tax code (MST);
+ * the server enforces the same rule (`lib/domain/CasSignerConfig.ts`).
+ * `organizationName`/`representativeName` are never checked: CAS's own submit
+ * call only ever receives `organizationName` when non-empty (and never
+ * `representativeName` at all). */
 export const isCasSignerConfigValid = (config: CasSignerConfigValue): boolean => {
   const identification = config.identificationNumber.trim();
   if (identification && !/^\d{9}$|^\d{12}$/.test(identification)) return false;
   if (config.signerKind !== 'enterprise') return true;
-  const taxCode = config.taxCode.trim();
-  return !taxCode || /^\d{10}(?:-\d{3})?$/.test(taxCode);
+  return /^\d{10}(?:-\d{3})?$/.test(config.taxCode.trim());
 };

@@ -11,7 +11,7 @@
     "steps": {
       "upload": {
         "title": "Tải tệp PDF lên",
-        "description": "Tối đa 20 MB. Tệp nằm trong bộ nhớ tạm, xoá sau 24 giờ."
+        "description": "Tối đa 10 MB. Tệp nằm trong bộ nhớ tạm, xoá sau 24 giờ."
       },
       "place": {
         "title": "Đặt vị trí chữ ký, rồi xác nhận trên app Cas ID",
@@ -34,6 +34,11 @@
       "dropzoneSubtitle": "hoặc chọn tệp từ máy của bạn để bắt đầu ký"
     },
     "githubLink": "Xem mã nguồn trên GitHub",
+    "githubStars_other": "{{count}} sao",
+    "supportedSignatures": {
+      "sign": { "summary": "Ký bằng chữ ký số từ xa trên app Cas ID" },
+      "verify": { "summary": "Xác minh được chữ ký USB Token, HSM / ký từ xa, SIM PKI" }
+    },
     "intent": {
       "sign": "Ký tài liệu",
       "verify": "Xác minh chữ ký",
@@ -46,8 +51,9 @@
     }
   },
   "nav": {
-    "upload": "Tài liệu",
-    "api": "API"
+    "docs": "Tài liệu",
+    "api": "API",
+    "comingSoon": "Sắp có"
   },
   "footer": {
     "title1": "Bảo mật chuẩn quốc tế",
@@ -95,8 +101,8 @@
     "signerKindLabel": "Người ký là ai?",
     "signerKind": { "individual": "Cá nhân", "enterprise": "Doanh nghiệp" },
     "cccdLabel": "CCCD người ký",
-    "representativeCccdLabel": "CCCD người đại diện",
-    "cccdHint": "Bắt buộc để đẩy yêu cầu ký sang app Cas ID. 12 số (hoặc 9 số nếu là CMND cũ). Có thể để trống để chỉ ký bằng QR.",
+    "optionalNotice": "Nhập thông tin thì gửi yêu cầu ký sang Cas ID.",
+    "enterpriseTaxCodeRequired": "Bắt buộc nhập MST để ký doanh nghiệp.",
     "fullNameLabel": "Họ tên người ký",
     "fullNamePlaceholder": "NGUYỄN VĂN A",
     "taxCodeLabel": "Mã số thuế (MST)",
@@ -105,7 +111,7 @@
     "organizationPlaceholder": "Tên công ty theo đăng ký",
     "representativeLabel": "Người đại diện",
     "representativePlaceholder": "Họ tên người đại diện pháp luật",
-    "noCccdWarning": "Chưa có CCCD thì chỉ ký được bằng QR — sẽ không có thông báo đẩy sang app Cas ID.",
+    "noCccdWarning": "Để trống thì ký bằng QR.",
     "errors": {
       "cccd": "CCCD phải là 12 số (hoặc 9 số nếu là CMND cũ).",
       "taxCode": "Mã số thuế phải là 10 số, có thể kèm -3 số.",
@@ -144,13 +150,19 @@
     "needUploadForPreview": "Hãy tải PDF để xem trước và đặt vị trí chữ ký.",
     "submit": "Ký",
     "renderingPreview": "Đang kết xuất xem trước…",
-    "clickOrDrag": "Cuộn để xem các trang · bấm 'Thêm ô chữ ký' rồi nhấp vào vị trí muốn đặt",
+    "clickOrDrag": "Cuộn để xem các trang · bấm 'Chọn vị trí ký' rồi nhấp vào vị trí muốn đặt",
+    "placingNewFieldHint": "Bấm vào vị trí bạn muốn trên PDF để đặt ô ký, hoặc bỏ qua nếu vị trí hiện tại đã ổn.",
     "addField": "Chọn vị trí ký",
     "addFirstFieldHint": "Chưa có ô ký — thêm khi bạn sẵn sàng đặt chữ ký.",
     "removeField": "Xoá ô này",
+    "removeFieldShort": "Xoá",
+    "dragToMove": "Kéo để di chuyển",
+    "fieldLabel": "Chữ ký #{{n}}",
+    "fieldSubLabel": "Người ký duyệt trên Cas ID",
+    "fieldCounter": "{{total}} ô ký · trang này {{onPage}}",
+    "checkingSignatures": "Đang xác minh chữ ký…",
     "zoomIn": "Phóng to",
     "zoomOut": "Thu nhỏ",
-    "fieldCount": "{{onPage}} ô ở trang này · {{total}} ô tổng cộng",
     "aria": {
       "signaturePlacement": "Vị trí chữ ký",
       "resizeField": "Thay đổi kích thước ô chữ ký",
@@ -255,7 +267,8 @@
       "ROOT_NOT_TRUSTED": "Root CA chưa được tin cậy",
       "SIGNATURE_INVALID": "Chữ ký không hợp lệ",
       "TRUST_STORE_NOT_CONFIGURED": "Chưa cấu hình kho tin cậy",
-      "UNSUPPORTED_SUBFILTER": "Định dạng chữ ký chưa hỗ trợ"
+      "UNSUPPORTED_SUBFILTER": "Định dạng chữ ký chưa hỗ trợ",
+      "UNSUPPORTED_ALGORITHM": "Thuật toán chữ ký chưa hỗ trợ"
     }
   },
   "verifyUpload": {

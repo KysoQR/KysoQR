@@ -2,7 +2,7 @@ import { getCasProvider } from '@/lib/cas/getCasProvider';
 import { mapCasState } from '@/lib/mapCasState';
 import { isTimeoutError } from '@/lib/fetchWithTimeout';
 import { casErrorDetail } from '@/lib/casErrorDetail';
-import { checkRateLimit, clientIpFromRequest } from '@/lib/rateLimit';
+import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -12,12 +12,11 @@ export const runtime = 'nodejs';
  * CAS's official docs) — client must tolerate their absence.
  */
 export async function GET(request: Request): Promise<Response> {
-  if (
-    !checkRateLimit(`sign-status:${clientIpFromRequest(request)}`, { limit: 60, windowMs: 60_000 })
-      .allowed
-  ) {
-    return Response.json({ error: 'RATE_LIMITED', message: 'Too many requests' }, { status: 429 });
-  }
+  const rateLimit = checkRateLimit(`sign-status:${clientIpFromRequest(request)}`, {
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);
 
   const signRequestId = new URL(request.url).searchParams.get('signRequestId');
   if (!signRequestId) {
@@ -53,6 +52,9 @@ export async function GET(request: Request): Promise<Response> {
       rawState: result.state,
       signedAt: result.signedAt,
       identityKey: result.identityKey ?? undefined,
+      // Kept as `null` (not dropped) outside COMPLETED -- CAS documents it
+      // as "set when state = COMPLETED, otherwise null".
+      identityKeyExpiresAt: result.identityKeyExpiresAt,
       orgIdSigned: result.orgIdSigned ?? undefined,
       expiresIn: result.expiresIn ?? undefined,
     });

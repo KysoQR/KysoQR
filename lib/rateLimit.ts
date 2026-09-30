@@ -14,7 +14,13 @@ export interface RateLimitOptions {
   windowMs: number;
 }
 
-export function checkRateLimit(key: string, options: RateLimitOptions): { allowed: boolean } {
+export interface RateLimitResult {
+  allowed: boolean;
+  /** Seconds until the next request would be allowed; 0 when `allowed`. */
+  retryAfterSeconds: number;
+}
+
+export function checkRateLimit(key: string, options: RateLimitOptions): RateLimitResult {
   const now = Date.now();
   const bucket = buckets.get(key) ?? { tokens: options.limit, lastRefillAt: now };
 
@@ -25,12 +31,22 @@ export function checkRateLimit(key: string, options: RateLimitOptions): { allowe
 
   if (bucket.tokens < 1) {
     buckets.set(key, bucket);
-    return { allowed: false };
+    const msUntilOneToken = ((1 - bucket.tokens) / options.limit) * options.windowMs;
+    return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(msUntilOneToken / 1000)) };
   }
 
   bucket.tokens -= 1;
   buckets.set(key, bucket);
-  return { allowed: true };
+  return { allowed: true, retryAfterSeconds: 0 };
+}
+
+/** The 429 every route returns once `checkRateLimit` says no -- one shape,
+ * with `Retry-After` so callers know how long to back off. */
+export function rateLimitedResponse(retryAfterSeconds: number): Response {
+  return Response.json(
+    { error: 'RATE_LIMITED', message: 'Too many requests' },
+    { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+  );
 }
 
 /**

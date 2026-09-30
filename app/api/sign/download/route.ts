@@ -1,7 +1,7 @@
 import { getCasProvider } from '@/lib/cas/getCasProvider';
 import { isTimeoutError } from '@/lib/fetchWithTimeout';
 import { casErrorDetail } from '@/lib/casErrorDetail';
-import { checkRateLimit, clientIpFromRequest } from '@/lib/rateLimit';
+import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -12,12 +12,11 @@ export const runtime = 'nodejs';
  * identityKey. Streams the PDF straight back, never cached server-side.
  */
 export async function GET(request: Request): Promise<Response> {
-  if (
-    !checkRateLimit(`sign-download:${clientIpFromRequest(request)}`, { limit: 20, windowMs: 60_000 })
-      .allowed
-  ) {
-    return Response.json({ error: 'RATE_LIMITED', message: 'Too many requests' }, { status: 429 });
-  }
+  const rateLimit = checkRateLimit(`sign-download:${clientIpFromRequest(request)}`, {
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);
 
   const identityKey = new URL(request.url).searchParams.get('identityKey');
   if (!identityKey) {
@@ -57,6 +56,12 @@ export async function GET(request: Request): Promise<Response> {
       },
     });
   } catch (error) {
+    if (casProvider.isRateLimitedError(error)) {
+      return Response.json(
+        { error: 'CAS_RATE_LIMITED', message: 'CAS is rate-limiting this client' },
+        { status: 429 }
+      );
+    }
     // Only ever showed up in the server terminal before -- `detail` now
     // carries the same CAS errorCode/status (or a timeout flag) to the
     // client too, so DevTools on a real deploy shows what the server log

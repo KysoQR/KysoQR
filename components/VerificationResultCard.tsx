@@ -189,6 +189,11 @@ export const STATUS_STYLES: Record<
     icon: 'lucide:file-question',
     labelKey: 'verify.shortLabels.UNSUPPORTED_SUBFILTER',
   },
+  UNSUPPORTED_ALGORITHM: {
+    chip: 'bg-gray-100 text-gray-600',
+    icon: 'lucide:file-question',
+    labelKey: 'verify.shortLabels.UNSUPPORTED_ALGORITHM',
+  },
 };
 
 export function VerificationResultCard({

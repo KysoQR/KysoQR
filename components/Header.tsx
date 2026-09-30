@@ -2,11 +2,25 @@
 
 import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from './LanguageSwitcher';
+import { GithubStarsButton } from './GithubStarsButton';
 
-/** Simplified port of x-sign-web/src/components/Header.tsx — single nav tab
- * (no separate Swagger API-docs route in this repo), `rightSlot` kept so the
+/** External nav targets (e.g. casso.vn) open in a new tab. */
+const externalLinkProps = (href: string) =>
+  /^https?:\/\//.test(href) ? { target: '_blank', rel: 'noopener noreferrer' } : {};
+
+/** `href: null` = shown but not clickable yet ("coming soon"). The home page
+ * (`/`) matches no tab, so nothing is underlined there. */
+const NAV_ITEMS: { key: string; href: string | null; matchPath: string | null; labelKey: string }[] = [
+  { key: 'docs', href: '/docs#description/introduction', matchPath: '/docs', labelKey: 'nav.docs' },
+  { key: 'api', href: 'https://casso.vn/', matchPath: null, labelKey: 'nav.api' },
+];
+
+/** Simplified port of x-sign-web/src/components/Header.tsx — nav tabs
+ * ("Tài liệu" opens the API reference at `/docs`, "API" is a placeholder
+ * for now) plus the GitHub/star button on every page, `rightSlot` kept so the
  * home page's "Dùng thử miễn phí" CTA still works exactly like the original.
  * `centerContent` is a later addition: the signing wizard's step indicator
  * renders inline here (see SigningWizard.tsx) instead of as its own card
@@ -41,6 +55,7 @@ export default function Header({
 }) {
   const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const pathname = usePathname();
 
   return (
     <>
@@ -68,13 +83,36 @@ export default function Header({
               className="hidden items-stretch gap-4 text-md text-text-secondary sm:flex"
               aria-label="Primary"
             >
-              <Link
-                href="/"
-                aria-current="page"
-                className="-mb-px inline-flex items-center border-b-2 border-primary px-1.5 pt-1 pb-2 font-semibold text-primary-strong transition-colors"
-              >
-                {t('nav.upload')}
-              </Link>
+              {NAV_ITEMS.map((item) => {
+                if (!item.href) {
+                  return (
+                    <span
+                      key={item.key}
+                      aria-disabled="true"
+                      title={t('nav.comingSoon')}
+                      className="-mb-px inline-flex cursor-not-allowed items-center border-b-2 border-transparent px-1.5 pt-1 pb-2 font-semibold opacity-50"
+                    >
+                      {t(item.labelKey)}
+                    </span>
+                  );
+                }
+                const active = pathname === item.matchPath;
+                return (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    {...externalLinkProps(item.href)}
+                    aria-current={active ? 'page' : undefined}
+                    className={`-mb-px inline-flex items-center border-b-2 px-1.5 pt-1 pb-2 font-semibold transition-colors ${
+                      active
+                        ? 'border-primary text-primary-strong'
+                        : 'border-transparent hover:text-text-main'
+                    }`}
+                  >
+                    {t(item.labelKey)}
+                  </Link>
+                );
+              })}
             </nav>
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -92,6 +130,7 @@ export default function Header({
             </button>
             <div className="flex items-center gap-3.5">
               <LanguageSwitcher />
+              <GithubStarsButton />
               {rightSlot}
             </div>
           </div>
@@ -124,13 +163,32 @@ export default function Header({
                 </button>
               </div>
               <nav className="flex flex-col gap-0 px-4 py-4 text-md font-semibold text-text-secondary">
-                <Link
-                  href="/"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="rounded bg-surface-soft px-4 py-3 text-primary-strong"
-                >
-                  {t('nav.upload')}
-                </Link>
+                {NAV_ITEMS.map((item) =>
+                  item.href ? (
+                    <Link
+                      key={item.key}
+                      href={item.href}
+                      {...externalLinkProps(item.href)}
+                      onClick={() => setIsMenuOpen(false)}
+                      className={`rounded px-4 py-3 ${
+                        pathname === item.matchPath
+                          ? 'bg-surface-soft text-primary-strong'
+                          : 'hover:text-text-main'
+                      }`}
+                    >
+                      {t(item.labelKey)}
+                    </Link>
+                  ) : (
+                    <span
+                      key={item.key}
+                      aria-disabled="true"
+                      title={t('nav.comingSoon')}
+                      className="cursor-not-allowed rounded px-4 py-3 opacity-50"
+                    >
+                      {t(item.labelKey)}
+                    </span>
+                  )
+                )}
               </nav>
             </div>
           </div>

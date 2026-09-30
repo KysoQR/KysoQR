@@ -11,7 +11,7 @@ import { SigningStepHeader } from '@/components/signing/SigningStepHeader';
 import { ButtonSpinner, InlineSpinner } from '@/components/signing/Spinners';
 import { QRErrorBoundary } from '@/components/signing/QRErrorBoundary';
 import { ExpiresIn } from '@/components/signing/ExpiresIn';
-import { MAX_UPLOAD_SIZE_MB, formatFileSize } from '@/components/signing/constants';
+import { MAX_SIGN_UPLOAD_SIZE_MB, formatFileSize } from '@/components/signing/constants';
 import QR from '@/components/QR';
 import SignaturePlacement, {
   ZOOM_MIN,
@@ -31,7 +31,7 @@ import { SignatureHistorySidebar } from '@/components/SignatureHistorySidebar';
 import type { SignatureFieldProps } from '@/lib/domain/SignatureField';
 import { parseJsonSafely } from '@/lib/http';
 import { addRecentSignature } from '@/lib/recentSignatures';
-import { downloadSignedPdfBlob as fetchSignedPdfBytes } from '@/lib/downloadSignedPdf';
+import { downloadSignedPdfBlob as fetchSignedPdfBytes, signedFileName } from '@/lib/downloadSignedPdf';
 import { lookupSigningRound } from '@/lib/signingRoundLookup';
 import type { SigningRoundDetail } from '@/lib/cas/CasProvider';
 import type { VerificationResult } from '@/lib/verification/verifyPdfSignatures';
@@ -249,6 +249,25 @@ export function SigningWizard({
   const [signerConfig, setSignerConfig] = useState<CasSignerConfigValue>(DEFAULT_SIGNER_CONFIG);
   const [signatureFields, setSignatureFields] = useState<SignatureFieldProps[]>([]);
 
+  // The left column (upload + signer config) follows whether the document
+  // currently has any signature field: it opens with the first one and
+  // closes again once the last one is removed, handing the space back to the
+  // PDF. Each time fields go from none to some, the signer-config box is
+  // highlighted again as the next step. Tracked during render (not in an
+  // effect) so the highlight lands in the same paint as the field.
+  const hasSignatureFields = signatureFields.length > 0;
+  const [hadSignatureFields, setHadSignatureFields] = useState(false);
+  const [signerConfigJustRevealed, setSignerConfigJustRevealed] = useState(false);
+  if (hasSignatureFields !== hadSignatureFields) {
+    setHadSignatureFields(hasSignatureFields);
+    setSignerConfigJustRevealed(hasSignatureFields);
+  }
+  useEffect(() => {
+    if (!signerConfigJustRevealed) return;
+    const id = window.setTimeout(() => setSignerConfigJustRevealed(false), 6000);
+    return () => window.clearTimeout(id);
+  }, [signerConfigJustRevealed]);
+
   // Real measured heights of the 3 sticky columns' own content (form/PDF/
   // history) -- see `useHeightObserver`'s comment. `columnRailHeight` (the
   // max of the 3, only counting history when it's actually shown) is
@@ -277,13 +296,6 @@ export function SigningWizard({
     historyHeightObserver.measureNow();
   });
 
-  // Step indicator's real rendered height, now that it's a `fixed` footer
-  // (see the bottom of this component's JSX) instead of living in-flow
-  // under the sticky header -- `fixed` takes it out of layout entirely, so
-  // the page content's bottom padding needs this measured explicitly
-  // instead of getting it "for free" the way `sticky` positioning would.
-  const [stepIndicatorHeight, setStepIndicatorHeight] = useState(0);
-  const registerStepIndicatorRef = useHeightObserver(setStepIndicatorHeight);
 
   // Real measured height of the sticky header block (site header + PDF
   // toolbar row) -- the 3 columns below anchor to `top: stickyOffset`, not
@@ -369,6 +381,9 @@ export function SigningWizard({
   // x-sign-web's behavior exactly). See the effect below.
   const [existingSignatures, setExistingSignatures] = useState<VerificationResult[]>([]);
   const [signatureSidebarOpen, setSignatureSidebarOpen] = useState(false);
+  /** True while the silent existing-signature check below is in flight, so
+   * the toolbar can show a "verifying" spinner instead of nothing. */
+  const [checkingSignatures, setCheckingSignatures] = useState(false);
 
   const currentStepIndex = STEP_ORDER.indexOf(step);
   const steps = useMemo(
@@ -436,11 +451,13 @@ export function SigningWizard({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setExistingSignatures([]);
       setSignatureSidebarOpen(false);
+      setCheckingSignatures(false);
       return;
     }
 
     let cancelled = false;
     (async () => {
+      setCheckingSignatures(true);
       try {
         const form = new FormData();
         form.append('file', file);
@@ -466,6 +483,8 @@ export function SigningWizard({
         if (signatures.length > 0) setSignatureSidebarOpen(true);
       } catch {
         // Silent by design — a courtesy detection, never surfaced as an error.
+      } finally {
+        if (!cancelled) setCheckingSignatures(false);
       }
     })();
 
@@ -482,19 +501,29 @@ export function SigningWizard({
       setUploadError(t('upload.errorNotPdf'));
       return;
     }
-    if (selected.size > MAX_UPLOAD_SIZE_MB * 1024 * 1024) {
-      setUploadError(t('upload.errorTooLarge', { maxMb: MAX_UPLOAD_SIZE_MB }));
+    if (selected.size > MAX_SIGN_UPLOAD_SIZE_MB * 1024 * 1024) {
+      setUploadError(t('upload.errorTooLarge', { maxMb: MAX_SIGN_UPLOAD_SIZE_MB }));
       return;
     }
     setUploadError(null);
     setFile(selected);
     setSignatureFields([]);
+    setSignerConfigJustRevealed(false);
   };
 
   const showSignatureHistoryColumn = signatureSidebarOpen && existingSignatures.length > 0;
+  // The whole left column (dropzone + file info + signer config) is only
+  // shown while at least one signature field exists, so a user with no
+  // field yet sees just the PDF and the "Chọn vị trí ký" action. Always
+  // shown without a file (e.g. resumed session after reload, then "Quay lại
+  // chỉnh sửa") -- otherwise there'd be no way to upload one.
+  const showSignerColumn = !file || hasSignatureFields;
+  const fieldsOnVisiblePage = signatureFields.filter(
+    (field) => field.page === placementVisiblePage
+  ).length;
   const columnRailHeight =
     Math.max(
-      formContentHeight,
+      showSignerColumn ? formContentHeight : 0,
       pdfContentHeight,
       showSignatureHistoryColumn ? historyContentHeight : 0
     ) || undefined;
@@ -504,9 +533,55 @@ export function SigningWizard({
   // Left/right sidebar columns at 80% of their original share, with the
   // freed-up width added to the PDF (center) column, so the PDF renders
   // noticeably larger without changing the overall page width.
-  const gridColsClassName = showSignatureHistoryColumn
-    ? 'lg:grid-cols-[minmax(280px,0.4fr)_minmax(0,1.62fr)_minmax(260px,0.48fr)]'
-    : 'lg:grid-cols-[minmax(300px,0.44fr)_minmax(0,1.86fr)]';
+  // Without the left column, its track is dropped entirely so the PDF takes
+  // that width too (pdf.js re-renders at the new width via
+  // SignaturePlacement's ResizeObserver).
+  const showToolbarControls = step === 'upload' && Boolean(file);
+
+  // "Lịch sử ký" is centered over the signature-history card while that
+  // column is open. The toolbar and the card sit in differently padded
+  // containers, so this can't be pure CSS: measure the column's horizontal
+  // center relative to the toolbar row, re-measured whenever either resizes
+  // (the column narrows/widens as the signer column opens/closes).
+  const toolbarRowRef = useRef<HTMLDivElement | null>(null);
+  const historyColumnElRef = useRef<HTMLDivElement | null>(null);
+  const registerHistoryColumn = useCallback(
+    (el: HTMLDivElement | null) => {
+      registerHistoryContentRef(el);
+      historyColumnElRef.current = el;
+    },
+    [registerHistoryContentRef]
+  );
+  const [historyToggleCenterX, setHistoryToggleCenterX] = useState<number | null>(null);
+  useEffect(() => {
+    const column = historyColumnElRef.current;
+    const row = toolbarRowRef.current;
+    if (!showSignatureHistoryColumn || !isLgUp || !column || !row) return;
+    const update = () => {
+      const c = column.getBoundingClientRect();
+      const r = row.getBoundingClientRect();
+      setHistoryToggleCenterX(Math.round(c.left + c.width / 2 - r.left));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(column);
+    observer.observe(row);
+    window.addEventListener('resize', update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [showSignatureHistoryColumn, isLgUp]);
+  const historyToggleCentered =
+    showSignatureHistoryColumn && isLgUp && historyToggleCenterX != null;
+
+  const gridColsClassName = showSignerColumn
+    ? showSignatureHistoryColumn
+      ? 'lg:grid-cols-[minmax(260px,0.48fr)_minmax(0,1.62fr)_minmax(320px,0.5fr)]'
+      : 'lg:grid-cols-[minmax(0,1.86fr)_minmax(340px,0.54fr)]'
+    : showSignatureHistoryColumn
+      ? 'lg:grid-cols-[minmax(260px,0.48fr)_minmax(0,1.86fr)]'
+      : 'lg:grid-cols-1';
 
   const canSubmit =
     Boolean(file) &&
@@ -752,6 +827,7 @@ export function SigningWizard({
     setStep('upload');
     setFile(null);
     setSignatureFields([]);
+    setSignerConfigJustRevealed(false);
     setSignerConfig(DEFAULT_SIGNER_CONFIG);
     setSignRequestId(null);
     setQrContent(null);
@@ -771,7 +847,7 @@ export function SigningWizard({
       if (!url) return;
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'signed.pdf';
+      a.download = signedFileName(window.localStorage.getItem(LS_KEYS.documentName));
       a.click();
     },
     [signedPdfUrl]
@@ -823,6 +899,7 @@ export function SigningWizard({
     setSubmitError(null);
     setSignedPdfError(null);
     setSignatureFields([]);
+    setSignerConfigJustRevealed(false);
     setFile(newFile);
     setStep('upload');
   }, [downloadSignedPdfBlob]);
@@ -856,86 +933,47 @@ export function SigningWizard({
       <div ref={registerStickyHeaderRef} className="sticky top-0 z-30">
         <Header maxWidthClassName="max-w-6xl" onLogoClick={resetFlow} />
 
-        {/* Toolbar row: page navigation, zoom, "Chọn vị trí ký", "Đặt lại",
-            "Ký" -- all one group, pushed to this row's own true right edge
-            (`justify-end`, not grid-aligned to the PDF column below it,
-            which was tried first). Kept as its own row below the header
-            (not merged into the header itself -- that was tried and
-            reverted per explicit request: too cramped/wrapped awkwardly
-            there). Lifted out of SignaturePlacement's own internal toolbar
-            (see its exposed imperative handle + mirrored display-state
-            callbacks). Only meaningful once there's a file to place fields
-            on. */}
-        {step === 'upload' && file && (
-          <div className="border-b border-border-subtle bg-white/95 backdrop-blur">
-            <div className="flex w-full flex-wrap items-center justify-end gap-2 px-4 py-2 sm:px-6">
-              {/* Neutral/white -- deliberately NOT the green `bg-primary`
-                  treatment, so only "Chọn vị trí ký" and "Ký" (the actual
-                  primary actions) read as green/highlighted; page-nav/zoom
-                  stay small/secondary. */}
-              <div className="flex items-center gap-1.5 rounded-full border border-border-subtle bg-white px-2 py-1 text-xs text-text-secondary shadow-sm">
-                <input
-                  type="number"
-                  step={1}
-                  min={1}
-                  max={placementPageCount ?? undefined}
-                  value={placementVisiblePage}
-                  onChange={(e) => {
-                    const value = e.currentTarget.valueAsNumber;
-                    if (Number.isFinite(value)) signaturePlacementRef.current?.goToPage(value);
-                  }}
-                  aria-label={t('common.page')}
-                  className="w-8 rounded-full bg-surface-soft px-1 text-center text-xs text-text-main outline-none [appearance:textfield] focus:ring-2 focus:ring-primary/40 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                />
-                {placementPageCount ? <span>{`/ ${placementPageCount}`}</span> : null}
-                <span className="mx-0.5 h-3.5 w-px bg-border-subtle" aria-hidden="true" />
-                <button
-                  type="button"
-                  onClick={() => signaturePlacementRef.current?.zoomOut()}
-                  disabled={placementZoomFactor <= ZOOM_MIN}
-                  aria-label={t('sign.zoomOut')}
-                  title={t('sign.zoomOut')}
-                  className="rounded-full px-1.5 font-semibold hover:bg-surface-soft disabled:cursor-not-allowed disabled:opacity-40"
+        {/* Toolbar row, 3 zones:
+            - left: "Lịch sử ký" -- centered over the signature-history card
+              while that column is open (measured, see historyToggleCenterX),
+              otherwise at the row's left edge;
+            - center: the 3-step indicator (moved up here from a fixed bottom
+              footer), exactly centered on the page via the equal `1fr`
+              side tracks, `lg`+ only (no room below that);
+            - right: page nav, zoom, "Chọn vị trí ký", field counter.
+            Rendered on every step so the step indicator stays visible; the
+            side zones only exist while placing fields (upload step with a
+            file). Kept below the header rather than merged into it (tried
+            and reverted: too cramped). `overflow-x-clip` keeps the
+            "Chọn vị trí ký" ping ring from widening the page. */}
+        <div
+          className={`overflow-x-clip border-b border-border-subtle bg-white/95 backdrop-blur ${
+            showToolbarControls ? '' : 'hidden lg:block'
+          }`}
+        >
+          <div
+            ref={toolbarRowRef}
+            className="relative flex w-full flex-wrap items-center gap-2 px-4 py-2 sm:px-6 lg:grid lg:grid-cols-[1fr_auto_1fr]"
+          >
+            <div className="flex min-h-9 items-center">
+              {showToolbarControls && checkingSignatures && (
+                <span
+                  role="status"
+                  className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-sm"
                 >
-                  −
-                </button>
-                <span className="w-9 text-center tabular-nums">
-                  {Math.round(placementZoomFactor * 100)}%
+                  <InlineSpinner />
+                  {t('sign.checkingSignatures')}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => signaturePlacementRef.current?.zoomIn()}
-                  disabled={placementZoomFactor >= ZOOM_MAX}
-                  aria-label={t('sign.zoomIn')}
-                  title={t('sign.zoomIn')}
-                  className="rounded-full px-1.5 font-semibold hover:bg-surface-soft disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  +
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => signaturePlacementRef.current?.addField()}
-                disabled={!placementCanAddField}
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {t('sign.addField')}
-              </button>
-
-              {/* "Đặt lại" moved out entirely (no longer needed here -- the
-                  enlarged "Ký" button now lives in the bottom step-indicator
-                  footer instead, see below `</main>`) and replaced with
-                  "Lịch sử ký", relocated here from the Header's own
-                  `rightSlot` per explicit request -- same conditional
-                  visibility (only once this upload actually has existing
-                  signatures to show) and the exact same handler/markup as
-                  before, just moved. */}
-              {existingSignatures.length > 0 && (
+              )}
+              {showToolbarControls && !checkingSignatures && existingSignatures.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setSignatureSidebarOpen((open) => !open)}
                   aria-expanded={signatureSidebarOpen}
-                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-primary-strong shadow-sm transition-colors hover:border-primary hover:text-primary"
+                  style={historyToggleCentered ? { left: historyToggleCenterX ?? undefined } : undefined}
+                  className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-primary-strong shadow-sm transition-colors hover:border-primary hover:text-primary ${
+                    historyToggleCentered ? 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2' : ''
+                  }`}
                 >
                   <Icon
                     icon={signatureSidebarOpen ? 'lucide:x' : 'lucide:history'}
@@ -948,14 +986,95 @@ export function SigningWizard({
                 </button>
               )}
             </div>
+            <div className="hidden lg:flex lg:justify-center">
+              <HeaderSteps steps={steps} currentStepIndex={currentStepIndex} />
+            </div>
+            {showToolbarControls && (
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2 lg:ml-0 lg:justify-self-end">
+                {/* Neutral/white -- deliberately NOT the green `bg-primary`
+                    treatment, so only "Chọn vị trí ký" and "Ký" (the actual
+                    primary actions) read as green/highlighted; page-nav/zoom
+                    stay small/secondary. */}
+                <div className="flex items-center gap-1.5 rounded-full border border-border-subtle bg-white px-2 py-1 text-xs text-text-secondary shadow-sm">
+                  <input
+                    type="number"
+                    step={1}
+                    min={1}
+                    max={placementPageCount ?? undefined}
+                    value={placementVisiblePage}
+                    onChange={(e) => {
+                      const value = e.currentTarget.valueAsNumber;
+                      if (Number.isFinite(value)) signaturePlacementRef.current?.goToPage(value);
+                    }}
+                    aria-label={t('common.page')}
+                    className="w-8 rounded-full bg-surface-soft px-1 text-center text-xs text-text-main outline-none [appearance:textfield] focus:ring-2 focus:ring-primary/40 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                  {placementPageCount ? <span>{`/ ${placementPageCount}`}</span> : null}
+                  <span className="mx-0.5 h-3.5 w-px bg-border-subtle" aria-hidden="true" />
+                  <button
+                    type="button"
+                    onClick={() => signaturePlacementRef.current?.zoomOut()}
+                    disabled={placementZoomFactor <= ZOOM_MIN}
+                    aria-label={t('sign.zoomOut')}
+                    title={t('sign.zoomOut')}
+                    className="rounded-full px-1.5 font-semibold hover:bg-surface-soft disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    −
+                  </button>
+                  <span className="w-9 text-center tabular-nums">
+                    {Math.round(placementZoomFactor * 100)}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => signaturePlacementRef.current?.zoomIn()}
+                    disabled={placementZoomFactor >= ZOOM_MAX}
+                    aria-label={t('sign.zoomIn')}
+                    title={t('sign.zoomIn')}
+                    className="rounded-full px-1.5 font-semibold hover:bg-surface-soft disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    +
+                  </button>
+                </div>
+                {/* `animate-ping` on a sibling ring, not `animate-pulse` on the
+                    button itself -- pulsing opacity would read like this
+                    button's own `disabled:opacity-60` state. */}
+                <span className="relative isolate inline-flex">
+                  {placementCanAddField && signatureFields.length === 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-0 -z-10 animate-ping rounded-full bg-primary/40"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => signaturePlacementRef.current?.addField()}
+                    disabled={!placementCanAddField}
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {t('sign.addField')}
+                  </button>
+                </span>
+                {/* How many boxes exist in total and on the visible page, so
+                    users can see at a glance if they added too many (there
+                    is no per-page cap any more). */}
+                {hasSignatureFields && (
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-border-subtle bg-white px-2.5 py-1 text-xs font-semibold text-text-secondary">
+                    <Icon icon="lucide:pen-line" className="h-3.5 w-3.5" />
+                    {t('sign.fieldCounter', {
+                      total: signatureFields.length,
+                      onPage: fieldsOnVisiblePage,
+                    })}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       <main className="flex min-w-0 flex-1 flex-col">
         <div
           className="flex w-full flex-1 flex-col px-4 py-4 sm:px-6 sm:py-5"
-          style={{ paddingBottom: stepIndicatorHeight || undefined }}
         >
           {step === 'upload' && (
             <section className="mb-4 mt-2 flex flex-col">
@@ -966,9 +1085,73 @@ export function SigningWizard({
                   trailingContent={progressLabel}
                 />
                 <div className={`mt-4 grid gap-6 ${gridColsClassName}`}>
+                  {showSignatureHistoryColumn && (
+                    <StickyAnchorColumn
+                      railHeight={columnRailHeight}
+                      railClassName="max-lg:order-last"
+                      contentHeight={historyContentHeight}
+                      stickyOffset={stickyOffset}
+                      viewportHeight={viewportHeight}
+                      isLgUp={isLgUp}
+                      className="flex flex-col"
+                      contentRef={registerHistoryColumn}
+                    >
+                      <SignatureHistorySidebar
+                        onClose={() => setSignatureSidebarOpen(false)}
+                        signatures={existingSignatures}
+                      />
+                    </StickyAnchorColumn>
+                  )}
+                  {/* Same `StickyAnchorColumn` as the side columns --
+                        see its own module comment for the 3-way decision
+                        (plain/sticky/clipped+reveal), driven by this
+                        column's measured height vs. `columnRailHeight`
+                        (shared across all 3, so whichever ends up tallest
+                        naturally gets the "plain, no sticky" treatment)
+                        and the viewport. */}
                   <StickyAnchorColumn
                     railHeight={columnRailHeight}
-                    railClassName="lg:pr-1"
+                    contentHeight={pdfContentHeight}
+                    stickyOffset={stickyOffset}
+                    viewportHeight={viewportHeight}
+                    isLgUp={isLgUp}
+                    className="flex flex-col"
+                    contentRef={registerPdfContentRef}
+                  >
+                    {file ? (
+                      <SignaturePlacement
+                        ref={signaturePlacementRef}
+                        file={file}
+                        fields={signatureFields}
+                        onFieldsChange={setSignatureFields}
+                        onVisiblePageChange={setPlacementVisiblePage}
+                        onPageCountChange={setPlacementPageCount}
+                        onZoomFactorChange={setPlacementZoomFactor}
+                        onCanAddFieldChange={setPlacementCanAddField}
+                      />
+                    ) : (
+                      <div className="mx-auto flex min-h-[360px] w-full flex-col items-center justify-center rounded-xl border border-border-subtle bg-surface-soft px-4 py-8 text-center">
+                        <p className="text-sm font-medium text-text-main">
+                          {t('upload.uploadPreview')}
+                        </p>
+                        <p className="mt-2 text-xs text-text-muted sm:text-sm">
+                          {t('sign.needUploadForPreview')}
+                        </p>
+                      </div>
+                    )}
+                  </StickyAnchorColumn>
+
+                  {/* Signer column (upload + signer details), RIGHT of the PDF.
+                      Below `lg` it's moved first (order-first) so the form stays
+                      above a long PDF on phones. */}
+                  {/* Hidden, the column is unmounted and its grid track
+                      dropped (see gridColsClassName), so the PDF widens into
+                      that space; unmounting also disconnects its height
+                      observer instead of keeping a stale height. */}
+                  {!showSignerColumn ? null : (
+                  <StickyAnchorColumn
+                    railHeight={columnRailHeight}
+                    railClassName="lg:pl-1 max-lg:order-first"
                     contentHeight={formContentHeight}
                     stickyOffset={stickyOffset}
                     viewportHeight={viewportHeight}
@@ -1018,7 +1201,7 @@ export function SigningWizard({
                           {t('common.upload')}
                         </span>
                         <p className="text-[11px] text-text-soft">
-                          {t('upload.requirements', { maxMb: MAX_UPLOAD_SIZE_MB })}
+                          {t('upload.requirements', { maxMb: MAX_SIGN_UPLOAD_SIZE_MB })}
                         </p>
                         {!file && (
                           <p className="mt-1 text-xs text-text-soft">{t('upload.noFile')}</p>
@@ -1056,8 +1239,40 @@ export function SigningWizard({
                             </div>
                           </div>
                         )}
-                        <SignerConfigPanel value={signerConfig} onChange={setSignerConfig} />
+                        {/* Next-step cue after a field is placed: a pulsing
+                            ring on its own overlay (pulsing the box itself
+                            would fade the inputs too), for 6 s or until the
+                            user starts filling it in. */}
+                        <div
+                          className="relative rounded-lg"
+                          onFocusCapture={() => setSignerConfigJustRevealed(false)}
+                        >
+                          {signerConfigJustRevealed && (
+                            <span
+                              aria-hidden="true"
+                              className="pointer-events-none absolute -inset-2 animate-pulse rounded-xl ring-2 ring-primary"
+                            />
+                          )}
+                          <SignerConfigPanel value={signerConfig} onChange={setSignerConfig} />
+                        </div>
                       </div>
+
+                      {/* "Ký" sits below the signer box, in the column's free
+                          space (moved here from the bottom footer, which is
+                          also hidden below `lg` -- phones had no "Ký" at all).
+                          The ripple is box-shadow based (`animate-ky-ripple`,
+                          app/globals.css) so it can't cause horizontal scroll. */}
+                      <button
+                        type="button"
+                        onClick={handleSubmit}
+                        disabled={!canSubmit}
+                        className={`mt-[10px] inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-full bg-primary px-6 py-2.5 text-base font-semibold text-white shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 ${
+                          canSubmit ? 'animate-ky-ripple' : ''
+                        }`}
+                      >
+                        {submitting && <ButtonSpinner />}
+                        {submitting ? t('common.submitting') : t('sign.submit')}
+                      </button>
 
                       {uploadError && (
                         <div className="rounded-md border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
@@ -1066,62 +1281,8 @@ export function SigningWizard({
                       )}
                     </>
                   </StickyAnchorColumn>
-
-                  {/* Same `StickyAnchorColumn` as the left column above --
-                        see its own module comment for the 3-way decision
-                        (plain/sticky/clipped+reveal), driven by this
-                        column's measured height vs. `columnRailHeight`
-                        (shared across all 3, so whichever ends up tallest
-                        naturally gets the "plain, no sticky" treatment)
-                        and the viewport. */}
-                  <StickyAnchorColumn
-                    railHeight={columnRailHeight}
-                    contentHeight={pdfContentHeight}
-                    stickyOffset={stickyOffset}
-                    viewportHeight={viewportHeight}
-                    isLgUp={isLgUp}
-                    className="flex flex-col"
-                    contentRef={registerPdfContentRef}
-                  >
-                    {file ? (
-                      <SignaturePlacement
-                        ref={signaturePlacementRef}
-                        file={file}
-                        fields={signatureFields}
-                        onFieldsChange={setSignatureFields}
-                        onVisiblePageChange={setPlacementVisiblePage}
-                        onPageCountChange={setPlacementPageCount}
-                        onZoomFactorChange={setPlacementZoomFactor}
-                        onCanAddFieldChange={setPlacementCanAddField}
-                      />
-                    ) : (
-                      <div className="mx-auto flex min-h-[360px] w-full flex-col items-center justify-center rounded-xl border border-border-subtle bg-surface-soft px-4 py-8 text-center">
-                        <p className="text-sm font-medium text-text-main">
-                          {t('upload.uploadPreview')}
-                        </p>
-                        <p className="mt-2 text-xs text-text-muted sm:text-sm">
-                          {t('sign.needUploadForPreview')}
-                        </p>
-                      </div>
-                    )}
-                  </StickyAnchorColumn>
-
-                  {showSignatureHistoryColumn && (
-                    <StickyAnchorColumn
-                      railHeight={columnRailHeight}
-                      contentHeight={historyContentHeight}
-                      stickyOffset={stickyOffset}
-                      viewportHeight={viewportHeight}
-                      isLgUp={isLgUp}
-                      className="flex flex-col"
-                      contentRef={registerHistoryContentRef}
-                    >
-                      <SignatureHistorySidebar
-                        onClose={() => setSignatureSidebarOpen(false)}
-                        signatures={existingSignatures}
-                      />
-                    </StickyAnchorColumn>
                   )}
+
                 </div>
               </SigningCard>
             </section>
@@ -1416,45 +1577,6 @@ export function SigningWizard({
           )}
         </div>
       </main>
-
-      {/* Step indicator -- used to sit inline in the header itself
-          (Header's `centerContent`), then moved to its own row right below
-          the header; now pinned to the bottom of the viewport as a fixed
-          footer instead (explicit request), the same way the header stays
-          pinned to the top, rather than scrolling away with the page.
-          Same visibility as before (`hidden lg:block`);
-          `registerStepIndicatorRef` measures its real rendered height so the
-          page content's own bottom padding above can leave exactly enough
-          room for it (the 3 sticky columns anchor to the header's height at
-          the *top* now, not this footer -- see `stickyOffset`). */}
-      <div
-        ref={registerStepIndicatorRef}
-        className="fixed inset-x-0 bottom-0 z-30 hidden border-t border-border-subtle bg-white/95 backdrop-blur lg:block"
-      >
-        {/* `relative` + the button's own `absolute right-*` (rather than a
-            `justify-between` row) keeps `HeaderSteps` exactly centered
-            regardless of whether the button is present -- a flex-between
-            layout would re-center the steps into the leftover space instead,
-            shifting them off-center on every step except this one. */}
-        <div className="relative flex w-full items-center justify-center px-4 py-2.5 sm:px-6">
-          <HeaderSteps steps={steps} currentStepIndex={currentStepIndex} />
-          {/* Enlarged "Ký" button, relocated here from the upload-step
-              toolbar per explicit request -- same `handleSubmit`/`canSubmit`
-              gate as before, just bigger and living in the persistent
-              footer instead of a toolbar row scoped to the upload step. */}
-          {step === 'upload' && file && (
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!canSubmit}
-              className="absolute right-4 inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-primary px-6 py-2.5 text-base font-semibold text-white shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:right-6"
-            >
-              {submitting && <ButtonSpinner />}
-              {submitting ? t('common.submitting') : t('sign.submit')}
-            </button>
-          )}
-        </div>
-      </div>
 
       {showDownloadReminder && (
         <DownloadReminderModal

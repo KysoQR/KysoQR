@@ -1,5 +1,5 @@
 import { getCasProvider } from '@/lib/cas/getCasProvider';
-import { checkRateLimit, clientIpFromRequest } from '@/lib/rateLimit';
+import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
 import { isTimeoutError } from '@/lib/fetchWithTimeout';
 import { casErrorDetail } from '@/lib/casErrorDetail';
 
@@ -20,14 +20,11 @@ export async function GET(
 ): Promise<Response> {
   const { orgIdSigned } = await params;
 
-  if (
-    !checkRateLimit(`verify-signing-round:${clientIpFromRequest(request)}`, {
-      limit: 30,
-      windowMs: 60_000,
-    }).allowed
-  ) {
-    return Response.json({ error: 'RATE_LIMITED', message: 'Too many requests' }, { status: 429 });
-  }
+  const rateLimit = checkRateLimit(`verify-signing-round:${clientIpFromRequest(request)}`, {
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);
 
   let casProvider;
   try {

@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@iconify/react": "6.0.2",
+    "@scalar/api-reference-react": "0.9.74",
     "asn1js": "^3.0.10",
     "i18next": "26.4.2",
     "next": "16.3.5",
@@ -54,6 +55,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.70.0",
     "vitest": "5.0.0",
-    "wrangler": "^4.135.0"
+    "wrangler": "^4.135.0",
+    "yaml": "^2.9.1"
   }
 }

@@ -13,8 +13,8 @@ import {
 } from 'react';
 import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from 'pdfjs-dist';
 import { useTranslation } from 'react-i18next';
+import { Icon } from '@iconify/react';
 import {
-  MAX_FIELDS_PER_PAGE,
   MAX_HEIGHT_RATIO,
   MIN_HEIGHT_RATIO,
   MIN_WIDTH_RATIO,
@@ -140,6 +140,21 @@ function SignaturePlacementInner(
     });
     return map;
   }, [fields]);
+
+  // 1-based number shown on each box, counted across the whole document
+  // (page order, then creation order within a page) so it matches the
+  // wizard's total "N ô ký" counter. Deliberately not by on-page position:
+  // that would renumber boxes while one is being dragged up or down.
+  const ordinalByIndex = useMemo(() => {
+    const ordinals: number[] = [];
+    let next = 1;
+    [...fieldsByPage.keys()]
+      .sort((a, b) => a - b)
+      .forEach((page) => {
+        for (const { index } of fieldsByPage.get(page) ?? []) ordinals[index] = next++;
+      });
+    return ordinals;
+  }, [fieldsByPage]);
 
   const fieldsOnVisiblePage = useMemo(
     () => fieldsByPage.get(visiblePage) ?? [],
@@ -356,9 +371,13 @@ function SignaturePlacementInner(
     []
   );
 
+  // The default slot is near the bottom of the page, often below the fold
+  // -- without this the new box can land where the user isn't looking.
+  const pendingScrollIndexRef = useRef<number | null>(null);
+
   const addFieldToPage = useCallback(() => {
     const metrics = pageMetrics[visiblePage];
-    if (disabled || !metrics || fieldsOnVisiblePage.length >= MAX_FIELDS_PER_PAGE) return;
+    if (disabled || !metrics) return;
     const next = makeAvailableField(
       visiblePage,
       fieldsOnVisiblePage.map(({ field }) => field)
@@ -366,7 +385,25 @@ function SignaturePlacementInner(
     onFieldsChange((current) => [...current, next]);
     setSelectedIndex(fields.length);
     setIsPlacingNew(true);
+    pendingScrollIndexRef.current = fields.length;
   }, [disabled, pageMetrics, visiblePage, fieldsOnVisiblePage, fields.length, onFieldsChange]);
+
+  // Placing the first box also opens the wizard's left column, which narrows
+  // the stage and re-renders every page -- scrolling right away would aim at
+  // where the box *was*. So the scroll waits until the layout stops changing
+  // (each re-render updates `containerWidth`/`pageMetrics`, re-running this
+  // effect and restarting the timer), then scrolls to the box element itself.
+  useEffect(() => {
+    const index = pendingScrollIndexRef.current;
+    if (index == null || !fields[index]) return;
+    const id = window.setTimeout(() => {
+      pendingScrollIndexRef.current = null;
+      stageRef.current
+        ?.querySelector(`[data-field-index="${index}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 250);
+    return () => window.clearTimeout(id);
+  }, [fields, pageMetrics, containerWidth]);
 
   const removeField = useCallback(
     (index: number) => {
@@ -540,12 +577,10 @@ function SignaturePlacementInner(
     onZoomFactorChange?.(zoomFactor);
   }, [zoomFactor, onZoomFactorChange]);
   useEffect(() => {
-    const canAdd =
-      !disabled &&
-      Boolean(pageMetrics[visiblePage]) &&
-      fieldsOnVisiblePage.length < MAX_FIELDS_PER_PAGE;
+    // No per-page cap any more: adding only needs the visible page rendered.
+    const canAdd = !disabled && Boolean(pageMetrics[visiblePage]);
     onCanAddFieldChange?.(canAdd);
-  }, [disabled, pageMetrics, visiblePage, fieldsOnVisiblePage, onCanAddFieldChange]);
+  }, [disabled, pageMetrics, visiblePage, onCanAddFieldChange]);
 
   useImperativeHandle(
     ref,
@@ -561,15 +596,16 @@ function SignaturePlacementInner(
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-        <span className="italic">
-          {loading ? t('sign.renderingPreview') : t('sign.clickOrDrag')}
+        <span className={isPlacingNew && !loading ? 'font-medium text-primary-strong' : 'italic'}>
+          {loading
+            ? t('sign.renderingPreview')
+            : isPlacingNew
+              ? t('sign.placingNewFieldHint')
+              : t('sign.clickOrDrag')}
         </span>
         {fields.length === 0 && (
           <span className="text-text-muted">{t('sign.addFirstFieldHint')}</span>
         )}
-        <span className="text-gray-500">
-          {t('sign.fieldCount', { onPage: fieldsOnVisiblePage.length, total: fields.length })}
-        </span>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div
@@ -590,6 +626,7 @@ function SignaturePlacementInner(
             widthPx={containerWidth ? containerWidth * zoomFactor : undefined}
             metrics={pageMetrics[pageNumber]}
             fieldsHere={fieldsByPage.get(pageNumber) ?? []}
+            ordinalByIndex={ordinalByIndex}
             selectedIndex={selectedIndex}
             isDragging={isDragging}
             disabled={disabled}
@@ -616,6 +653,7 @@ function PdfPageBlock({
   widthPx,
   metrics,
   fieldsHere,
+  ordinalByIndex,
   selectedIndex,
   isDragging,
   disabled,
@@ -636,6 +674,8 @@ function PdfPageBlock({
   widthPx: number | undefined;
   metrics: PageMetrics | undefined;
   fieldsHere: FieldEntry[];
+  /** Document-wide 1-based number per field index (see `ordinalByIndex`). */
+  ordinalByIndex: number[];
   selectedIndex: number | null;
   isDragging: boolean;
   disabled: boolean | undefined;
@@ -677,7 +717,7 @@ function PdfPageBlock({
             className="pointer-events-none absolute left-0 top-0"
             style={{ width: metrics.widthPx, height: metrics.heightPx }}
           >
-            {fieldsHere.map(({ field, index }, position) => {
+            {fieldsHere.map(({ field, index }) => {
               const box = {
                 leftPx: field.xRatio * metrics.widthPx,
                 topPx: field.yRatio * metrics.heightPx,
@@ -685,17 +725,26 @@ function PdfPageBlock({
                 heightPx: field.heightRatio * metrics.heightPx,
               };
               const isSelected = selectedIndex === index;
+              const ordinal = ordinalByIndex[index] ?? index + 1;
+              // Small boxes (min size, low zoom) only fit the icon + "#N".
+              const compact = box.widthPx < 150 || box.heightPx < 44;
+              // Near the top edge of the page, the toolbar goes below the
+              // box instead so it isn't clipped by the page/canvas above.
+              const toolbarBelow = box.topPx < 28;
               return (
                 <div
                   key={`field-${index}`}
+                  data-field-index={index}
                   role="button"
                   tabIndex={disabled ? -1 : 0}
                   aria-label={t('sign.aria.signaturePlacement')}
                   aria-pressed={isSelected}
-                  className={`pointer-events-auto absolute left-0 top-0 touch-none rounded border-2 bg-gray-300/60 transition-colors ${
+                  className={`pointer-events-auto absolute left-0 top-0 touch-none rounded-md border-2 border-dashed transition-colors ${
+                    // Near-opaque fill so the PDF text underneath doesn't
+                    // bleed through and make the box's own label unreadable.
                     isSelected
-                      ? 'border-primary ring-2 ring-primary/30'
-                      : 'border-blue-500/80 hover:border-primary hover:bg-gray-300/80'
+                      ? 'z-10 border-primary bg-surface-soft-strong/95 shadow-lg shadow-primary/20'
+                      : 'border-primary/70 bg-surface-soft/90 hover:border-primary hover:bg-surface-soft-strong/95'
                   } ${disabled ? 'cursor-not-allowed' : isDragging && isSelected ? 'cursor-grabbing' : 'cursor-grab'}`}
                   style={{
                     width: box.widthPx,
@@ -708,33 +757,57 @@ function PdfPageBlock({
                     onFieldSelect(index);
                   }}
                 >
-                  <span className="pointer-events-none absolute left-1 top-1 rounded bg-blue-500 px-1 text-[10px] font-semibold leading-4 text-white">
-                    {position + 1}
-                  </span>
-                  {!disabled && (
-                    <>
+                  <div className="pointer-events-none flex h-full w-full flex-col items-center justify-center gap-0.5 overflow-hidden px-1 text-center text-primary-strong">
+                    <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold leading-tight">
+                      <Icon icon="lucide:pen-line" className="h-3.5 w-3.5 shrink-0" />
+                      {compact ? `#${ordinal}` : t('sign.fieldLabel', { n: ordinal })}
+                    </span>
+                    {!compact && (
+                      <span className="whitespace-nowrap text-[10px] leading-tight text-primary-strong/70">
+                        {t('sign.fieldSubLabel')}
+                      </span>
+                    )}
+                  </div>
+                  {!disabled && isSelected && (
+                    // Toolbar riding on the selected box. The drag label has
+                    // no handler of its own: its pointerdown bubbles to the
+                    // box, so grabbing it moves the box like the box itself.
+                    <div
+                      className={`absolute left-0 flex w-max min-w-full items-center justify-between gap-2 ${
+                        toolbarBelow ? 'top-full mt-1.5' : 'bottom-full mb-1.5'
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-primary px-1.5 py-0.5 text-[11px] font-semibold text-white shadow-sm">
+                        <Icon icon="lucide:grip-vertical" className="h-3 w-3" />
+                        {t('sign.dragToMove')}
+                      </span>
                       <button
                         type="button"
                         aria-label={t('sign.removeField')}
                         title={t('sign.removeField')}
-                        className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold leading-none text-white shadow-sm hover:bg-red-700"
+                        className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-md border border-red-500 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-600 hover:text-white"
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={(event) => {
                           event.stopPropagation();
                           onFieldRemove(index);
                         }}
                       >
-                        ×
+                        <Icon icon="lucide:trash-2" className="h-3 w-3" />
+                        {t('sign.removeFieldShort')}
                       </button>
-                      <div
-                        role="presentation"
-                        aria-hidden="true"
-                        title={t('sign.aria.resizeField')}
-                        className="absolute -bottom-1 -right-1 h-3 w-3 cursor-nwse-resize rounded-sm border border-white bg-primary shadow-sm hover:bg-primary-strong"
-                        onPointerDown={(event) => onFieldPointerDown(event, index, 'resize')}
-                        onClick={(event) => event.stopPropagation()}
-                      />
-                    </>
+                    </div>
+                  )}
+                  {!disabled && (
+                    <div
+                      role="presentation"
+                      aria-hidden="true"
+                      title={t('sign.aria.resizeField')}
+                      className="absolute -bottom-1.5 -right-1.5 flex h-4 w-4 cursor-nwse-resize items-center justify-center rounded-sm border-2 border-white bg-primary text-white shadow-md hover:bg-primary-strong"
+                      onPointerDown={(event) => onFieldPointerDown(event, index, 'resize')}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <Icon icon="lucide:move-diagonal-2" className="pointer-events-none h-2.5 w-2.5" />
+                    </div>
                   )}
                 </div>
               );

@@ -86,6 +86,14 @@ const STATUS_META: Record<
     chip: 'bg-gray-100 text-gray-500',
     icon: 'lucide:file-question',
   },
+  UNSUPPORTED_ALGORITHM: {
+    color: 'text-gray-500',
+    bg: 'bg-gray-500',
+    subColor: 'text-gray-700',
+    border: 'border-l-[5px] border-gray-500',
+    chip: 'bg-gray-100 text-gray-500',
+    icon: 'lucide:file-question',
+  },
 };
 
 /** Best-effort "CN=" extraction from a formatted DN string for a friendlier "signed by" line. */

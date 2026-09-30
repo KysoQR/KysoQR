@@ -1,12 +1,11 @@
 /** Ported from x-sign-api/src/domain/intent/CasSignerConfig.ts.
  *
- * Nothing here is actually REQUIRED to be present -- an enterprise signer
- * with no `taxCode` at all, or an individual with no `identificationNumber`,
- * are both legitimate: CAS's own API treats identity as something the
- * signer confirms afterwards, in the Cas ID app during the QR step, not
- * something this form must fully collect upfront (QR-only signing is a
- * deliberate, supported path, not a fallback for a broken state). What IS
- * still checked is FORMAT, but only when a value is actually present --
+ * An individual with no `identificationNumber` is legitimate: CAS's own API
+ * treats identity as something the signer confirms afterwards, in the Cas ID
+ * app during the QR step (QR-only signing is a deliberate, supported path).
+ * An enterprise signer, however, MUST provide a `taxCode` -- that's what
+ * makes it an enterprise signature (same rule as the signing form's
+ * `isCasSignerConfigValid`). FORMAT is checked whenever a value is present --
  * typing a malformed CCCD/tax code shouldn't silently reach CAS as garbage.
  * `organizationName`/`representativeName` stay optional too, matching
  * x-sign-web's original `casSignerForm.ts`: CAS's own submit call only ever
@@ -50,7 +49,10 @@ export class CasSignerConfig {
       const taxCode = input.taxCode?.trim() || null;
       const organizationName = input.organizationName?.trim() || null;
       const representativeName = input.representativeName?.trim() || null;
-      if (taxCode && !TAX_CODE.test(taxCode)) {
+      if (!taxCode) {
+        throw new CasSignerConfigValidationError('taxCode is required for enterprise signers');
+      }
+      if (!TAX_CODE.test(taxCode)) {
         throw new CasSignerConfigValidationError(
           'taxCode must be 10 digits, optionally followed by -NNN'
         );

@@ -11,7 +11,7 @@ import {
   CasSignerConfigValidationError,
   type SignerType,
 } from '@/lib/domain/CasSignerConfig';
-import { checkRateLimit, clientIpFromRequest } from '@/lib/rateLimit';
+import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -53,12 +53,11 @@ function logCasSubmitError(error: unknown): void {
  * Cas ID user.
  */
 export async function POST(request: Request): Promise<Response> {
-  if (
-    !checkRateLimit(`sign-request:${clientIpFromRequest(request)}`, { limit: 20, windowMs: 60_000 })
-      .allowed
-  ) {
-    return Response.json({ error: 'RATE_LIMITED', message: 'Too many requests' }, { status: 429 });
-  }
+  const rateLimit = checkRateLimit(`sign-request:${clientIpFromRequest(request)}`, {
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);
 
   let form: FormData;
   try {
@@ -99,7 +98,21 @@ export async function POST(request: Request): Promise<Response> {
     throw error;
   }
 
-  const signerType = (form.get('signerType') as SignerType | null) ?? 'individual';
+  const signerTypeRaw = form.get('signerType') || 'individual';
+  if (signerTypeRaw !== 'individual' && signerTypeRaw !== 'enterprise') {
+    return badRequest(
+      'INVALID_SIGNER_CONFIG',
+      'signerType must be "individual" or "enterprise"'
+    );
+  }
+  const signerType: SignerType = signerTypeRaw;
+
+  const languageRaw = form.get('language') || 'vi';
+  if (languageRaw !== 'vi' && languageRaw !== 'en') {
+    return badRequest('INVALID_LANGUAGE', 'language must be "vi" or "en"');
+  }
+  const language: 'vi' | 'en' = languageRaw;
+
   let signerConfig: CasSignerConfig;
   try {
     signerConfig = CasSignerConfig.create({
@@ -116,7 +129,6 @@ export async function POST(request: Request): Promise<Response> {
     throw error;
   }
 
-  const language = (form.get('language') as 'vi' | 'en' | null) ?? 'vi';
   const documentName = normalizeDocumentName(file.name.replace(/\.pdf$/i, ''));
 
   let casProvider;

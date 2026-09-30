@@ -1,6 +1,6 @@
 import { MAX_UPLOAD_SIZE_MB } from '@/components/signing/constants';
 import { isValidPdfUpload } from '@/lib/pdfValidation';
-import { checkRateLimit, clientIpFromRequest } from '@/lib/rateLimit';
+import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
 import { getTrustStore } from '@/lib/trustStore/getTrustStore';
 import { verifyPdfSignatures } from '@/lib/verification/verifyPdfSignatures';
 
@@ -29,14 +29,11 @@ function badRequest(code: string, message: string): Response {
  * API directly.
  */
 export async function POST(request: Request): Promise<Response> {
-  if (
-    !checkRateLimit(`verify-upload:${clientIpFromRequest(request)}`, {
-      limit: 20,
-      windowMs: 60_000,
-    }).allowed
-  ) {
-    return Response.json({ error: 'RATE_LIMITED', message: 'Too many requests' }, { status: 429 });
-  }
+  const rateLimit = checkRateLimit(`verify-upload:${clientIpFromRequest(request)}`, {
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);
 
   let form: FormData;
   try {

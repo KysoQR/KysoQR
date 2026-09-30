@@ -1,6 +1,6 @@
 # Deploy — Server mode (Ubuntu VPS)
 
-Hướng dẫn deploy `Xsign-Opensource` lên một máy chủ Ubuntu tự quản lý (mô hình "Server" trong `README.md`). Không cần database/Redis/queue — chỉ 1 tiến trình Node.js duy nhất.
+Hướng dẫn deploy `KysoQR` lên một máy chủ Ubuntu tự quản lý (mô hình "Server" trong `README.md`). Không cần database/Redis/queue — chỉ 1 tiến trình Node.js duy nhất.
 
 > Mọi chỗ dưới đây dùng placeholder (`<server-ip-or-domain>`, `<repo-url>`, ...) — **không** ghi địa chỉ/IP máy chủ thật vào bất kỳ file nào trong repo này (repo là public open source).
 
@@ -53,7 +53,7 @@ Clone bằng đúng deploy key này:
 
 ```bash
 sudo -u xsign env GIT_SSH_COMMAND="ssh -i /etc/xsign-opensource-deploy/id_ed25519 -o UserKnownHostsFile=/etc/xsign-opensource-deploy/known_hosts -o IdentitiesOnly=yes" \
-  git clone -b main git@github.com:<owner>/Xsign-Opensource.git /opt/xsign-opensource
+  git clone -b main git@github.com:KysoQR/KysoQR.git /opt/xsign-opensource
 cd /opt/xsign-opensource
 ```
 

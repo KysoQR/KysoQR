@@ -10,7 +10,6 @@ export const MIN_WIDTH_RATIO = 0.16;
 export const MAX_WIDTH_RATIO = 0.6;
 export const MIN_HEIGHT_RATIO = 0.055;
 export const MAX_HEIGHT_RATIO = 0.22;
-export const MAX_FIELDS_PER_PAGE = 3;
 
 export interface SignatureFieldProps {
   /** 1-based page index. */
@@ -24,6 +23,12 @@ export interface SignatureFieldProps {
 
 export class SignatureFieldValidationError extends Error {}
 
+const RATIO_KEYS = ['xRatio', 'yRatio', 'widthRatio', 'heightRatio'] as const;
+
+/** Strings quoted, so `"abc"` and a missing value (`undefined`) read differently in the error. */
+const describeValue = (value: unknown): string =>
+  typeof value === 'string' ? JSON.stringify(value) : String(value);
+
 /**
  * A signature box, expressed as a fraction (0..1) of the page box, in the
  * convention the UI displays (DOM: yRatio = top edge from the page top).
@@ -31,11 +36,27 @@ export class SignatureFieldValidationError extends Error {}
 export class SignatureField {
   private constructor(private readonly props: SignatureFieldProps) {}
 
+  /** `props` comes straight from client-supplied JSON on the server, so its
+   * shape is checked at runtime too, not just trusted from the type -- a
+   * `null` item used to throw a plain TypeError (an unhandled 500) and a
+   * non-numeric ratio went through `clamp01` as NaN. */
   static create(props: SignatureFieldProps): SignatureField {
+    if (typeof props !== 'object' || props === null) {
+      throw new SignatureFieldValidationError(
+        `each signatureField must be an object, got ${describeValue(props)}`
+      );
+    }
     if (!Number.isInteger(props.page) || props.page < 1) {
       throw new SignatureFieldValidationError(
-        `page must be a 1-based integer, got ${String(props.page)}`
+        `page must be a 1-based integer, got ${describeValue(props.page)}`
       );
+    }
+    for (const key of RATIO_KEYS) {
+      if (!Number.isFinite(props[key])) {
+        throw new SignatureFieldValidationError(
+          `${key} must be a finite number, got ${describeValue(props[key])}`
+        );
+      }
     }
     const widthRatio = clamp01(props.widthRatio);
     const heightRatio = clamp01(props.heightRatio);
@@ -58,26 +79,15 @@ export class SignatureField {
     });
   }
 
-  /** Validates the whole-document rule: at least 1 field, at most
-   * MAX_FIELDS_PER_PAGE per page — ALWAYS enforced (fixes the old bug where
-   * this only ran when the array happened to be sent). */
-  static createMany(items: SignatureFieldProps[]): SignatureField[] {
+  /** Validates the whole-document rule: at least 1 field -- ALWAYS enforced
+   * (fixes the old bug where this only ran when the array happened to be
+   * sent). There is deliberately no per-page cap any more (the old app's
+   * limit of 3 was dropped on request); each field is still validated. */
+  static createMany(items: unknown[]): SignatureField[] {
     if (items.length === 0) {
       throw new SignatureFieldValidationError('at least 1 signatureField is required');
     }
-    const fields = items.map((item) => SignatureField.create(item));
-    const perPage = new Map<number, number>();
-    for (const field of fields) {
-      perPage.set(field.page, (perPage.get(field.page) ?? 0) + 1);
-    }
-    for (const [page, count] of perPage) {
-      if (count > MAX_FIELDS_PER_PAGE) {
-        throw new SignatureFieldValidationError(
-          `page ${page} has ${count} signatureFields, max is ${MAX_FIELDS_PER_PAGE}`
-        );
-      }
-    }
-    return fields;
+    return items.map((item) => SignatureField.create(item as SignatureFieldProps));
   }
 
   get page(): number {

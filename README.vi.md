@@ -98,6 +98,7 @@ Hai luồng độc lập, cùng một repo, server hoàn toàn stateless (không
 - **Ký số** (CAS-driven) — `POST /api/sign/request` gửi tài liệu + vị trí chữ ký sang CAS → poll `GET /api/sign/status` → khi hoàn tất, tải bản đã ký về qua `GET /api/sign/download`. Trạng thái phiên ký chỉ tồn tại ở `localStorage` của trình duyệt.
 - **Xác minh** (document-driven) — `POST /api/verify/upload` xác minh chữ ký số thật (chữ ký + chain + trust anchor), độc lập hoàn toàn với CAS/database. `GET /api/verify/signing-round/[orgIdSigned]` là tra cứu nhanh qua CAS cho tiện, không thay thế cho verify-by-upload.
 - CAS được trừu tượng hoá qua một interface `CasProvider`, hiện có 1 implementation thật (`CasEsignProvider`) — gọi thẳng API CAS e-signing, không có chế độ giả lập.
+- Tài liệu API: xem tương tác tại `/docs` khi chạy app (file OpenAPI ở [public/openapi/](public/openapi/)).
 
 ## Cách chạy dự án
 
@@ -157,7 +158,7 @@ Phát hành theo giấy phép **MIT** — xem [`LICENSE`](LICENSE).
 
 ## Trạng thái
 
-Dự án đang trong giai đoạn hiện thực — luồng ký số đã chạy được đầy đủ; luồng xác minh chữ ký số đang được hiện thực dần (một số route/UI vẫn ở dạng khung, chưa hoàn thiện business logic).
+Dự án vẫn đang tiếp tục phát triển — luồng ký số và luồng xác minh chữ ký số (chữ ký CMS, chuỗi chứng thư, AIA, OCSP/CRL) đều đã hoạt động đầy đủ.
 
 ## Env người dùng cần
 

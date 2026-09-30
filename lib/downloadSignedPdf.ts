@@ -28,6 +28,17 @@ export async function downloadSignedPdfBlob(identityKey: string): Promise<Blob> 
   return res.blob();
 }
 
+/** Download name for a signed copy: the original document name plus a
+ * `_signed` suffix (so it never collides with the unsigned original), or
+ * `signed.pdf` when the original name is unknown. A name that already ends in
+ * `signed` (the `signed.pdf` fallback, or re-signing an already-signed copy)
+ * is kept as-is rather than growing `_signed_signed`. */
+export function signedFileName(originalName: string | null | undefined): string {
+  const base = originalName?.trim().replace(/\.pdf$/i, '');
+  if (!base) return 'signed.pdf';
+  return /(^|[_\s-])signed$/i.test(base) ? `${base}.pdf` : `${base}_signed.pdf`;
+}
+
 /** Triggers the browser's own save-file flow for a blob, without navigating
  * away from the current page. */
 export function triggerBlobDownload(blob: Blob, filename: string): void {

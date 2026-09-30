@@ -103,3 +103,21 @@ body {
 .menu-fade-in {
   animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Next-step cue for the "Ký" button: a ripple drawn with box-shadow, which
+   (unlike Tailwind's scale-based `animate-ping`) never adds to the page's
+   scrollable width -- so it can't flash a horizontal scrollbar. */
+@keyframes kyRipple {
+  0% {
+    box-shadow: 0 0 0 0 rgb(0 168 94 / 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgb(0 168 94 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(0 168 94 / 0);
+  }
+}
+.animate-ky-ripple {
+  animation: kyRipple 1.6s ease-out infinite;
+}

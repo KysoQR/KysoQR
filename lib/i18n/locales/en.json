@@ -11,7 +11,7 @@
     "steps": {
       "upload": {
         "title": "Upload your PDF",
-        "description": "Up to 20 MB. Files are held temporarily and deleted after 24 hours."
+        "description": "Up to 10 MB. Files are held temporarily and deleted after 24 hours."
       },
       "place": {
         "title": "Place your signature, then confirm in the Cas ID app",
@@ -34,6 +34,12 @@
       "dropzoneSubtitle": "or choose a file from your device to start signing"
     },
     "githubLink": "View source on GitHub",
+    "githubStars_one": "{{count}} star",
+    "githubStars_other": "{{count}} stars",
+    "supportedSignatures": {
+      "sign": { "summary": "Sign with a remote digital signature in the Cas ID app" },
+      "verify": { "summary": "Verifies USB token, HSM / remote, and SIM PKI signatures" }
+    },
     "intent": {
       "sign": "Sign a document",
       "verify": "Verify a signature",
@@ -46,8 +52,9 @@
     }
   },
   "nav": {
-    "upload": "Upload document",
-    "api": "API"
+    "docs": "Docs",
+    "api": "API",
+    "comingSoon": "Coming soon"
   },
   "footer": {
     "title1": "Internationally standard security",
@@ -95,8 +102,8 @@
     "signerKindLabel": "Who is signing?",
     "signerKind": { "individual": "Individual", "enterprise": "Business" },
     "cccdLabel": "Citizen ID (CCCD)",
-    "representativeCccdLabel": "Legal representative's citizen ID (CCCD)",
-    "cccdHint": "Required to send a signing request to the Cas ID app. 12 digits (or 9 for an old CMND). Leave blank for QR-only signing.",
+    "optionalNotice": "Enter details to send the signing request to Cas ID.",
+    "enterpriseTaxCodeRequired": "A tax code (MST) is required to sign as an enterprise.",
     "fullNameLabel": "Signer's full name",
     "fullNamePlaceholder": "NGUYEN VAN A",
     "taxCodeLabel": "Tax code (MST)",
@@ -105,7 +112,7 @@
     "organizationPlaceholder": "Company name as registered",
     "representativeLabel": "Legal representative",
     "representativePlaceholder": "Full name of the legal representative",
-    "noCccdWarning": "Without a citizen ID we can only offer QR signing — no notification will be pushed to the Cas ID app.",
+    "noCccdWarning": "Leave blank to sign by QR.",
     "errors": {
       "cccd": "Citizen ID must be 12 digits (or 9 for an old CMND).",
       "taxCode": "Tax code must be 10 digits, optionally followed by -3 digits.",
@@ -144,13 +151,19 @@
     "needUploadForPreview": "Upload a PDF to preview and place the signature.",
     "submit": "Sign document",
     "renderingPreview": "Rendering preview…",
-    "clickOrDrag": "Scroll to browse pages · click \"Add signature box\" then click where to place it",
+    "clickOrDrag": "Scroll to browse pages · click \"Choose signature position\" then click where to place it",
+    "placingNewFieldHint": "Click anywhere on the PDF to move the signature box, or leave it if this spot works.",
     "addField": "Choose signature position",
     "addFirstFieldHint": "No box yet — add one when you are ready to place the signature.",
     "removeField": "Remove this box",
+    "removeFieldShort": "Remove",
+    "dragToMove": "Drag to move",
+    "fieldLabel": "Signature #{{n}}",
+    "fieldSubLabel": "Signer approves in Cas ID",
+    "fieldCounter": "{{total}} boxes · this page {{onPage}}",
+    "checkingSignatures": "Verifying signatures…",
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
-    "fieldCount": "{{onPage}} on this page · {{total}} in total",
     "aria": {
       "signaturePlacement": "Signature placement",
       "resizeField": "Resize signature box",
@@ -255,7 +268,8 @@
       "ROOT_NOT_TRUSTED": "Root CA not trusted",
       "SIGNATURE_INVALID": "Signature invalid",
       "TRUST_STORE_NOT_CONFIGURED": "Trust store not configured",
-      "UNSUPPORTED_SUBFILTER": "Unsupported signature format"
+      "UNSUPPORTED_SUBFILTER": "Unsupported signature format",
+      "UNSUPPORTED_ALGORITHM": "Unsupported signature algorithm"
     }
   },
   "verifyUpload": {

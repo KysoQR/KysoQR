@@ -6,19 +6,18 @@ import { Icon } from '@iconify/react';
 import Header from './Header';
 import Footer from './Footer';
 import { ButtonSpinner, InlineSpinner } from './signing/Spinners';
-import { MAX_UPLOAD_SIZE_MB } from './signing/constants';
+import { MAX_SIGN_UPLOAD_SIZE_MB, MAX_UPLOAD_SIZE_MB } from './signing/constants';
 import { Tabs, type TabItem } from './Tabs';
 import { VerificationPopup } from './VerificationPopup';
 import { SigningRoundResult } from './SigningRoundResult';
 import { getRecentSignatures, type RecentSignature } from '@/lib/recentSignatures';
-import { downloadSignedPdfBlob, triggerBlobDownload } from '@/lib/downloadSignedPdf';
+import { downloadSignedPdfBlob, signedFileName, triggerBlobDownload } from '@/lib/downloadSignedPdf';
 import { lookupSigningRound } from '@/lib/signingRoundLookup';
 import type { SigningRoundDetail } from '@/lib/cas/CasProvider';
 
 const HOME_STEP_KEYS = ['upload', 'place', 'download'] as const;
 const HOME_TAG_KEYS = ['invoices', 'reconciliation', 'hr'] as const;
 const SUPPORTED_FILE_FORMATS = ['PDF'];
-const GITHUB_URL = 'https://github.com/KysoQR/KysoQR-Opensource';
 
 type Intent = 'sign' | 'verify';
 
@@ -72,6 +71,9 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
   const [recentDownloadError, setRecentDownloadError] = useState<string | null>(null);
   const [downloadingCode, setDownloadingCode] = useState<string | null>(null);
 
+  // Signing is capped by CAS (10 MB); verifying allows the larger 20 MB.
+  const maxUploadMb = intent === 'sign' ? MAX_SIGN_UPLOAD_SIZE_MB : MAX_UPLOAD_SIZE_MB;
+
   const handleFileSelected = (selected: File | null) => {
     if (!selected) return;
     const isPdfMime = selected.type === 'application/pdf';
@@ -80,8 +82,8 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
       setUploadError(t('upload.errorNotPdf'));
       return;
     }
-    if (selected.size > MAX_UPLOAD_SIZE_MB * 1024 * 1024) {
-      setUploadError(t('upload.errorTooLarge', { maxMb: MAX_UPLOAD_SIZE_MB }));
+    if (selected.size > maxUploadMb * 1024 * 1024) {
+      setUploadError(t('upload.errorTooLarge', { maxMb: maxUploadMb }));
       return;
     }
     setUploadError(null);
@@ -117,7 +119,7 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
     setRecentDownloadError(null);
     try {
       const blob = await downloadSignedPdfBlob(entry.identityKey);
-      triggerBlobDownload(blob, entry.name);
+      triggerBlobDownload(blob, signedFileName(entry.name));
     } catch (err) {
       console.warn('[home] recent-signature download failed', err);
       setRecentDownloadError(t('home.recentSignatures.downloadError'));
@@ -139,20 +141,7 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
 
   return (
     <div className="flex min-h-screen flex-col bg-white text-text-main">
-      <Header
-        rightSlot={
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={t('home.githubLink')}
-            title={t('home.githubLink')}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-white text-text-main shadow-sm transition-colors hover:border-primary hover:text-primary"
-          >
-            <Icon icon="lucide:github" className="h-5 w-5" />
-          </a>
-        }
-      />
+      <Header />
 
       <main className="flex-1 bg-[#F5FBF7]">
         <div className="mx-auto grid max-w-6xl gap-8 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[1fr_560px] lg:items-start lg:gap-14">
@@ -331,10 +320,16 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
 
               <div className="font-mono text-[11px] text-text-muted">
                 {t('home.instruction2', {
-                  maxSize: MAX_UPLOAD_SIZE_MB,
+                  maxSize: maxUploadMb,
                   formats: SUPPORTED_FILE_FORMATS.join(', '),
                 })}
               </div>
+              {/* What this tab can handle -- signing only goes through Cas ID,
+                  verification accepts any device (USB token, HSM, SIM PKI). */}
+              <p className="-mt-2 inline-flex items-start gap-1.5 text-left text-[12px] leading-snug text-text-secondary sm:whitespace-nowrap">
+                <Icon icon="lucide:info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{t(`home.supportedSignatures.${intent}.summary`)}</span>
+              </p>
             </div>
 
             {uploadError && (

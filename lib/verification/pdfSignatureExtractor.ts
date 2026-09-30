@@ -4,13 +4,19 @@ export type PdfSignatureExtractionError =
   | { kind: 'NO_SIGNATURE_FIELD_FOUND' }
   | { kind: 'MALFORMED_BYTE_RANGE'; detail?: string }
   | { kind: 'MALFORMED_CONTENTS'; detail?: string }
-  | { kind: 'UNSUPPORTED_SUBFILTER'; subFilter?: string }
   | { kind: 'MALFORMED_SIGNATURE_DICTIONARY'; detail?: string };
 
 export type ExtractCmsSuccess = {
   cmsDer: Buffer;
   byteRange: [number, number, number, number];
   subFilter: string;
+  /**
+   * False for a SubFilter this pipeline can't verify (e.g. an `ETSI.RFC3161`
+   * PAdES-LTA document timestamp). Such entries are reported one by one as
+   * unsupported rather than failing the whole document, so the ordinary
+   * signatures next to them still get verified.
+   */
+  supported: boolean;
   /**
    * ISO timestamp from the signature dictionary's `/M` entry, when present.
    *
@@ -170,7 +176,8 @@ function extractContents(pdfBytes: Buffer, scope: ObjectScope): { cmsDer: Buffer
  *
  * - Locates every signed /ByteRange occurrence.
  * - Reads associated /SubFilter and /Contents.
- * - Supports CMS-based signatures (adbe.pkcs7.detached, ETSI.CAdES.detached).
+ * - Supports CMS-based signatures (adbe.pkcs7.detached, ETSI.CAdES.detached);
+ *   any other SubFilter is still extracted, flagged `supported: false`.
  * - Returns a trimmed DER buffer (without trailing null padding) per signature.
  */
 export function extractAllCmsFromSignedPdf(pdfBytes: Buffer): ExtractAllCmsResult {
@@ -219,10 +226,6 @@ export function extractAllCmsFromSignedPdf(pdfBytes: Buffer): ExtractAllCmsResul
         },
       };
     }
-    if (!SUPPORTED_SUBFILTERS.has(subFilterRaw.toLowerCase())) {
-      return { ok: false, error: { kind: 'UNSUPPORTED_SUBFILTER', subFilter: subFilterRaw } };
-    }
-
     const contents = extractContents(pdfBytes, scope);
     if (!contents) {
       return {
@@ -235,6 +238,7 @@ export function extractAllCmsFromSignedPdf(pdfBytes: Buffer): ExtractAllCmsResul
       cmsDer: contents.cmsDer,
       byteRange,
       subFilter: subFilterRaw,
+      supported: SUPPORTED_SUBFILTERS.has(subFilterRaw.toLowerCase()),
       dictSigningTime: extractDictSigningTime(pdfBytes, scope),
     });
   }
