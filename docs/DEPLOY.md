@@ -26,7 +26,7 @@ node -v   # phải >= 22
 Tạo user riêng chạy app (không chạy app bằng root):
 
 ```bash
-sudo adduser --system --group --home /opt/xsign-opensource xsign
+sudo adduser --system --group --home /opt/kysoqr xsign
 ```
 
 ## 2. Clone code (nhánh `main`)
@@ -35,35 +35,35 @@ Nếu repo đang **Private**, không clone HTTPS anonymous được — tạo 1 
 
 ```bash
 # Tạo deploy key (đặt ngoài thư mục sẽ clone, tránh xung đột "thư mục không rỗng")
-sudo mkdir -p /etc/xsign-opensource-deploy
-sudo ssh-keygen -t ed25519 -f /etc/xsign-opensource-deploy/id_ed25519 -N "" -C "xsign-opensource-deploy"
-sudo chown -R xsign:xsign /etc/xsign-opensource-deploy
-sudo chmod 700 /etc/xsign-opensource-deploy
-sudo chmod 600 /etc/xsign-opensource-deploy/id_ed25519
+sudo mkdir -p /etc/kysoqr-deploy
+sudo ssh-keygen -t ed25519 -f /etc/kysoqr-deploy/id_ed25519 -N "" -C "kysoqr-deploy"
+sudo chown -R xsign:xsign /etc/kysoqr-deploy
+sudo chmod 700 /etc/kysoqr-deploy
+sudo chmod 600 /etc/kysoqr-deploy/id_ed25519
 
 # Lấy public key để thêm vào GitHub repo → Settings → Deploy keys → Add deploy
 # key (để trống "Allow write access", chỉ cần quyền đọc)
-sudo cat /etc/xsign-opensource-deploy/id_ed25519.pub
+sudo cat /etc/kysoqr-deploy/id_ed25519.pub
 
 # Trust sẵn host key github.com (tránh prompt yes/no khi clone)
-sudo -u xsign ssh-keyscan github.com | sudo tee /etc/xsign-opensource-deploy/known_hosts > /dev/null
+sudo -u xsign ssh-keyscan github.com | sudo tee /etc/kysoqr-deploy/known_hosts > /dev/null
 ```
 
 Clone bằng đúng deploy key này:
 
 ```bash
-sudo -u xsign env GIT_SSH_COMMAND="ssh -i /etc/xsign-opensource-deploy/id_ed25519 -o UserKnownHostsFile=/etc/xsign-opensource-deploy/known_hosts -o IdentitiesOnly=yes" \
-  git clone -b main git@github.com:KysoQR/KysoQR.git /opt/xsign-opensource
-cd /opt/xsign-opensource
+sudo -u xsign env GIT_SSH_COMMAND="ssh -i /etc/kysoqr-deploy/id_ed25519 -o UserKnownHostsFile=/etc/kysoqr-deploy/known_hosts -o IdentitiesOnly=yes" \
+  git clone -b main git@github.com:KysoQR/KysoQR.git /opt/kysoqr
+cd /opt/kysoqr
 ```
 
 Lưu cấu hình SSH này vào repo để sau này `git pull`/`scripts/deploy.sh` không cần gõ lại:
 
 ```bash
-sudo -u xsign git config core.sshCommand "ssh -i /etc/xsign-opensource-deploy/id_ed25519 -o UserKnownHostsFile=/etc/xsign-opensource-deploy/known_hosts -o IdentitiesOnly=yes"
+sudo -u xsign git config core.sshCommand "ssh -i /etc/kysoqr-deploy/id_ed25519 -o UserKnownHostsFile=/etc/kysoqr-deploy/known_hosts -o IdentitiesOnly=yes"
 ```
 
-Nếu repo đã chuyển sang Public, bỏ qua phần deploy key, dùng thẳng `sudo -u xsign git clone -b main <repo-url> /opt/xsign-opensource`.
+Nếu repo đã chuyển sang Public, bỏ qua phần deploy key, dùng thẳng `sudo -u xsign git clone -b main <repo-url> /opt/kysoqr`.
 
 ## 3. Cấu hình env
 
@@ -93,25 +93,25 @@ sudo -u xsign npm run build
 
 ## 5. Chạy bằng systemd (tự khởi động lại, sống qua reboot)
 
-Unit file có sẵn trong repo tại [`deploy/xsign-opensource.service`](../deploy/xsign-opensource.service) — chỉ cần copy vào đúng chỗ:
+Unit file có sẵn trong repo tại [`deploy/kysoqr.service`](../deploy/kysoqr.service) — chỉ cần copy vào đúng chỗ:
 
 ```bash
-sudo cp deploy/xsign-opensource.service /etc/systemd/system/
+sudo cp deploy/kysoqr.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now xsign-opensource
-sudo systemctl status xsign-opensource
+sudo systemctl enable --now kysoqr
+sudo systemctl status kysoqr
 ```
 
 Cấp quyền cho user `xsign` được chạy đúng 2 lệnh `systemctl restart`/`status` của riêng service này mà không cần mật khẩu — bắt buộc, vì [`scripts/deploy.sh`](../scripts/deploy.sh) (chạy bằng `sudo -u xsign bash scripts/deploy.sh` ở bước 8) tự gọi `sudo systemctl restart`/`status` bên trong nó. Thiếu bước này, **lần đầu deploy vẫn chạy được** (service chưa tồn tại nên script chỉ in hướng dẫn cài thủ công), nhưng **mọi lần redeploy sau đó sẽ fail** vì `xsign` không có quyền sudo:
 
 ```bash
-sudo visudo -f /etc/sudoers.d/xsign-opensource-deploy
+sudo visudo -f /etc/sudoers.d/kysoqr-deploy
 ```
 
 Nội dung file (đường dẫn `systemctl` trên Ubuntu thường là `/usr/bin/systemctl` — kiểm tra bằng `which systemctl` nếu máy bạn khác):
 
 ```
-xsign ALL=(root) NOPASSWD: /usr/bin/systemctl restart xsign-opensource, /usr/bin/systemctl status xsign-opensource --no-pager
+xsign ALL=(root) NOPASSWD: /usr/bin/systemctl restart kysoqr, /usr/bin/systemctl status kysoqr --no-pager
 ```
 
 ## 6. Mở cổng ra ngoài
@@ -144,12 +144,12 @@ sudo apt install -y nginx certbot python3-certbot-nginx
 File mẫu có sẵn trong repo tại [`deploy/nginx.conf.example`](../deploy/nginx.conf.example) (đã bao gồm sẵn `client_max_body_size 25m` — giới hạn mặc định 1MB của Nginx nhỏ hơn hẳn giới hạn thật của app, xem giải thích ngay trong file) — chỉ cần copy vào đúng chỗ rồi sửa domain:
 
 ```bash
-sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/xsign-opensource
-sudo nano /etc/nginx/sites-available/xsign-opensource   # thay <your-domain> bằng domain thật
+sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/kysoqr
+sudo nano /etc/nginx/sites-available/kysoqr   # thay <your-domain> bằng domain thật
 ```
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/xsign-opensource /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/kysoqr /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d <your-domain>   # cấp TLS, tự động sửa config sang https
 sudo ufw allow 'Nginx Full'
@@ -158,8 +158,8 @@ sudo ufw allow 'Nginx Full'
 ## 7. Kiểm tra sau khi deploy
 
 ```bash
-sudo systemctl status xsign-opensource        # phải là "active (running)"
-sudo journalctl -u xsign-opensource -n 50     # xem log, không có exception
+sudo systemctl status kysoqr        # phải là "active (running)"
+sudo journalctl -u kysoqr -n 50     # xem log, không có exception
 
 curl -I http://127.0.0.1:3000/               # 200
 
@@ -173,7 +173,7 @@ curl http://127.0.0.1:3000/api/verify/signing-round/khong-ton-tai
 [`scripts/deploy.sh`](../scripts/deploy.sh) gộp sẵn 4 bước trên (fetch + reset về `origin/main`, `npm install`, `npm run build`, restart service) — dùng cho cả lần deploy đầu và mọi lần sau:
 
 ```bash
-cd /opt/xsign-opensource
+cd /opt/kysoqr
 sudo -u xsign bash scripts/deploy.sh
 ```
 

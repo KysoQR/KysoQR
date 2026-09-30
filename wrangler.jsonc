@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "xsign-opensource",
+  "name": "kysoqr",
   // Must stay >= 2025-08-15 so `enable_nodejs_http_modules` is implied
   // automatically (needed for the `node:http`/`node:https` import inside
   // lib/verification/aiaCertFetcher.ts to load at all on this runtime --
@@ -21,7 +21,7 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "xsign-opensource"
+      "service": "kysoqr"
     }
   ],
   "observability": {
