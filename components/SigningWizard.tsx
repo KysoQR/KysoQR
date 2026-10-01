@@ -418,6 +418,10 @@ export function SigningWizard({
       return;
     }
 
+    // A file handed in from the home page always starts a fresh round at
+    // the upload step -- never jump to a previous round's "done" step.
+    if (initialFile) return;
+
     const savedIdentityKey = window.localStorage.getItem(LS_KEYS.identityKey);
     const savedExpiresAt = window.localStorage.getItem(LS_KEYS.identityKeyExpiresAt);
     // Deliberately does NOT auto-fetch the signed PDF here — that would spend
@@ -427,7 +431,7 @@ export function SigningWizard({
       setStatus('SIGNED');
       setStep('done');
     }
-  }, []);
+  }, [initialFile]);
 
   // Revoke the blob URL when it changes or the component unmounts.
   useEffect(() => {
