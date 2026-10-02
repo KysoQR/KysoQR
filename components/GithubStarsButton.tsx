@@ -58,7 +58,7 @@ export function GithubStarsButton() {
       <Icon icon="simple-icons:github" className="h-5 w-5" />
       {stars !== null && (
         <span className="inline-flex items-center gap-1 text-sm font-semibold">
-          <Icon icon="lucide:star" className="h-4 w-4 fill-current text-amber-500" />
+          <Icon icon="lucide:star" className="h-4 w-4" />
           {new Intl.NumberFormat('en', { notation: 'compact' }).format(stars)}
         </span>
       )}
