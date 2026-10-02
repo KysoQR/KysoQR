@@ -15,8 +15,8 @@ const externalLinkProps = (href: string) =>
 /** `href: null` = shown but not clickable yet ("coming soon"). The home page
  * (`/`) matches no tab, so nothing is underlined there. */
 const NAV_ITEMS: { key: string; href: string | null; matchPath: string | null; labelKey: string }[] = [
-  { key: 'api', href: 'https://cas.so/general/api/product-esign', matchPath: null, labelKey: 'nav.api' },
   { key: 'docs', href: '/docs#description/introduction', matchPath: '/docs', labelKey: 'nav.docs' },
+  { key: 'api', href: 'https://cas.so/general/api/product-esign', matchPath: null, labelKey: 'nav.api' },
 ];
 
 /** Simplified port of x-sign-web/src/components/Header.tsx — nav tabs
