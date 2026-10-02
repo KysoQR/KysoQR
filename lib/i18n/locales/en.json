@@ -49,6 +49,34 @@
       "title": "5 most recent signatures",
       "downloadButton": "Download",
       "downloadError": "Couldn't download this file (the download allowance may be used up). Please use a copy you already downloaded."
+    },
+    "branding": {
+      "eyebrow": "Casso ecosystem",
+      "title": "Sign with the method you already have",
+      "subtitle": "KysoQR is built by Casso. Digital signatures are issued by certificate authorities (CAs) licensed in Vietnam.",
+      "availableBadge": "Available on KysoQR",
+      "inDevelopmentBadge": "In development",
+      "providersLabel": "Signature providers",
+      "startSigning": "Sign a document now",
+      "cassoTagline": "CASSO, the financial assistant ecosystem trusted by leading businesses.",
+      "learnMore": "Learn about Casso",
+      "methods": {
+        "casid": {
+          "name": "CAS ID",
+          "title": "Remote signing with CAS ID",
+          "description": "Register a personal digital certificate, create your signature and activate it right on your phone. Registration, eKYC and activation all happen in the CAS ID app — no service counter, no USB token."
+        },
+        "vneid": {
+          "name": "VNeID",
+          "title": "VNeID",
+          "description": "Sign with a personal digital signature activated in the VNeID national e-ID app."
+        },
+        "usbtoken": {
+          "name": "USB Token",
+          "title": "USB Token",
+          "description": "Sign with a digital-signature USB token issued to an individual or a business."
+        }
+      }
     }
   },
   "nav": {
@@ -60,7 +88,8 @@
     "title1": "Internationally standard security",
     "title2": "Fast signing in seconds",
     "title3": "Solid legal foundation",
-    "footer": "© 2026 KysoQR. All rights reserved."
+    "footer": "© 2026 KysoQR. All rights reserved.",
+    "madeBy": "A product of"
   },
   "steps": {
     "uploadRequest": "Upload PDF & request permission",
