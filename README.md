@@ -25,6 +25,8 @@ Cas ID has two separate guided flows depending on account type. Screenshots belo
 
 ![Cas ID individual/household-business registration walkthrough](public/cas-id-registration-individual.gif)
 
+
+
 1. **Add a digital asset** — start the flow.
    - On the Cas ID home screen, tap the **[+]** icon to add a new link.
    - Select the **Individual / Household business** tab.
