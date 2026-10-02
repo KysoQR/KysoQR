@@ -48,6 +48,34 @@
       "title": "5 phiên ký gần nhất",
       "downloadButton": "Tải xuống",
       "downloadError": "Không tải được file này (có thể đã hết lượt tải). Vui lòng dùng bản đã tải trước đó."
+    },
+    "branding": {
+      "eyebrow": "Hệ sinh thái Casso",
+      "title": "Ký bằng phương thức bạn đang có",
+      "subtitle": "KysoQR do Casso phát triển. Chữ ký số được cấp bởi các tổ chức cung cấp dịch vụ chứng thực chữ ký số (CA) được cấp phép tại Việt Nam.",
+      "availableBadge": "Dùng ngay trên KysoQR",
+      "inDevelopmentBadge": "Đang phát triển",
+      "providersLabel": "Nhà cung cấp chữ ký",
+      "startSigning": "Ký tài liệu ngay",
+      "cassoTagline": "Hệ sinh thái trợ thủ tài chính CASSO - Lựa chọn tin cậy của các doanh nghiệp dẫn đầu.",
+      "learnMore": "Tìm hiểu về Casso",
+      "methods": {
+        "casid": {
+          "name": "CAS ID",
+          "title": "Ký số từ xa với CAS ID",
+          "description": "Đăng ký chứng thư số cá nhân, tạo mẫu chữ ký và kích hoạt ngay trên điện thoại. Toàn bộ đăng ký, eKYC và kích hoạt diễn ra trong app CAS ID — không cần ra điểm giao dịch, không cần USB Token."
+        },
+        "vneid": {
+          "name": "VNeID",
+          "title": "VNeID",
+          "description": "Ký bằng chữ ký số cá nhân đã kích hoạt trên ứng dụng định danh điện tử VNeID."
+        },
+        "usbtoken": {
+          "name": "USB Token",
+          "title": "USB Token",
+          "description": "Ký bằng USB Token chữ ký số đã được cấp cho cá nhân hoặc doanh nghiệp."
+        }
+      }
     }
   },
   "nav": {
@@ -59,7 +87,8 @@
     "title1": "Bảo mật chuẩn quốc tế",
     "title2": "Ký nhanh trong giây lát",
     "title3": "Pháp lý vững chắc",
-    "footer": "© 2026 KysoQR. All rights reserved."
+    "footer": "© 2026 KysoQR. All rights reserved.",
+    "madeBy": "Một sản phẩm của"
   },
   "steps": {
     "uploadRequest": "Tải PDF & yêu cầu quyền",
