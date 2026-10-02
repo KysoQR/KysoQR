@@ -121,3 +121,52 @@ body {
 .animate-ky-ripple {
   animation: kyRipple 1.6s ease-out infinite;
 }
+
+/* Bouncing chevron inside ScrollCue ("scroll down" hint). */
+@keyframes scrollCueBounce {
+  0%,
+  100% {
+    transform: translateY(-2px);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+.animate-scroll-cue {
+  animation: scrollCueBounce 1.2s ease-in-out infinite;
+}
+/* Blinking glow on the "Tặng 1000 chữ ký số miễn phí" CTA: an expanding
+   green halo plus a brief brighten, drawn with box-shadow/filter so the
+   button's own size (and the page's layout) never changes. */
+@keyframes ctaGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgb(0 168 94 / 0.6);
+    filter: brightness(1);
+  }
+  35% {
+    filter: brightness(1.12);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgb(0 168 94 / 0);
+    filter: brightness(1);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(0 168 94 / 0);
+    filter: brightness(1);
+  }
+}
+.animate-cta-glow {
+  animation: ctaGlow 1.6s ease-out infinite;
+}
+.animate-cta-glow:hover,
+.animate-cta-glow:focus-visible {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-cta-glow,
+  .animate-scroll-cue,
+  .animate-ky-ripple {
+    animation: none;
+  }
+}

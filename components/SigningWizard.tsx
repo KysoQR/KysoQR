@@ -35,6 +35,9 @@ import { downloadSignedPdfBlob as fetchSignedPdfBytes, signedFileName } from '@/
 import { lookupSigningRound } from '@/lib/signingRoundLookup';
 import type { SigningRoundDetail } from '@/lib/cas/CasProvider';
 import type { VerificationResult } from '@/lib/verification/verifyPdfSignatures';
+import { CAS_ID_VIDEO_GUIDE_ID, CasIdVideoGuide } from './signing/CasIdVideoGuide';
+import { ScrollCue } from './ScrollCue';
+import Footer from './Footer';
 
 /**
  * Signing wizard — UI/UX ported from x-sign-web (IntentSigningPage +
@@ -90,6 +93,16 @@ const TERMINAL_STATUSES = new Set(['SIGNED', 'REJECTED', 'FAILED', 'EXPIRED']);
 /** Terminal means "nothing left to resume" — clear immediately so a reload
  * (or just staying on the page) can start a fresh signing session right
  * away, per explicit product requirement. */
+/** DevTools-console summary of every signature that did not verify as
+ * SIGNED_VALID (the technical detail is in the server log). `console.warn`,
+ * not `console.error`, so it never triggers Next's dev error overlay. */
+function logSignatureProblems(signatures: VerificationResult[]) {
+  for (const sig of signatures) {
+    if (sig.status === 'SIGNED_VALID') continue;
+    console.warn(`[verify] signature #${sig.position ?? '?'}: ${sig.status} -- ${sig.message}`, sig);
+  }
+}
+
 function clearPersistedSession() {
   for (const key of Object.values(LS_KEYS)) window.localStorage.removeItem(key);
 }
@@ -303,6 +316,17 @@ export function SigningWizard({
   const [stickyOffset, setStickyOffset] = useState(0);
   const registerStickyHeaderRef = useHeightObserver(setStickyOffset);
 
+  // Each step starts at the top of the page. Without this the browser keeps
+  // the scroll position from the previous step -- e.g. scrolled down past
+  // the PDF preview to reach "Ký" in step 1 -- which on the shorter scan
+  // step lands right on the video guide below the QR card.
+  const previousStepRef = useRef(step);
+  useEffect(() => {
+    if (previousStepRef.current === step) return;
+    previousStepRef.current = step;
+    window.scrollTo({ top: 0 });
+  }, [step]);
+
   // Mirrors Tailwind's default `lg` breakpoint (min-width: 1024px) and the
   // live viewport height in JS -- both needed because whether a column gets
   // `position: sticky` at all is now a per-column, runtime decision made
@@ -466,12 +490,18 @@ export function SigningWizard({
         const form = new FormData();
         form.append('file', file);
         const res = await fetch('/api/verify/upload', { method: 'POST', body: form });
-        if (!res.ok || cancelled) return;
+        if (cancelled) return;
+        if (!res.ok) {
+          // Still silent on screen, but visible in DevTools for debugging.
+          console.warn('[verify] verification request failed', res.status, await parseJsonSafely(res).catch(() => null));
+          return;
+        }
         const data = await parseJsonSafely(res);
         if (cancelled) return;
         const signatures: VerificationResult[] = Array.isArray(data.signatures)
           ? data.signatures
           : [];
+        logSignatureProblems(signatures);
         // Auto-opens by default the moment existing signatures are found
         // (product decision: surface them immediately, not just via the
         // toggle button). The earlier "opens then immediately closes"
@@ -485,8 +515,10 @@ export function SigningWizard({
         // column's height. Both are fixed at the source now.
         setExistingSignatures(signatures);
         if (signatures.length > 0) setSignatureSidebarOpen(true);
-      } catch {
-        // Silent by design — a courtesy detection, never surfaced as an error.
+      } catch (error) {
+        // Silent on screen by design — a courtesy detection, never surfaced
+        // as an error — but logged for debugging.
+        console.warn('[verify] verification request failed', error);
       } finally {
         if (!cancelled) setCheckingSignatures(false);
       }
@@ -515,8 +547,7 @@ export function SigningWizard({
     setSignerConfigJustRevealed(false);
   };
 
-  const showSignatureHistoryColumn = signatureSidebarOpen && existingSignatures.length > 0;
-  // The whole left column (dropzone + file info + signer config) is only
+  const showSignatureHistoryColumn = signatureSidebarOpen && existingSignatures.length > 0;  // The whole left column (dropzone + file info + signer config) is only
   // shown while at least one signature field exists, so a user with no
   // field yet sees just the PDF and the "Chọn vị trí ký" action. Always
   // shown without a file (e.g. resumed session after reload, then "Quay lại
@@ -1305,138 +1336,150 @@ export function SigningWizard({
             // reading width on a very wide window, spreading the QR + text
             // grid so thin it looks broken/overflowing).
             <section className="mx-auto my-auto flex w-full max-w-[1180px] flex-col self-center">
-              <SigningCard className="flex flex-1 flex-col">
-                <SigningStepHeader
-                  stepNumber={2}
-                  title={t('scan.title')}
-                  trailingContent={progressLabel}
-                />
-                <p className="mt-1 text-sm text-text-muted">{t('scan.subtitle')}</p>
-                {statusError && (
-                  <div className="mb-3 mt-3 rounded-md border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning-text">
-                    {t('scan.statusError')} <span className="font-mono">{statusError}</span>
-                  </div>
-                )}
-                <div className="mx-auto mt-6 grid gap-8 lg:grid-cols-[minmax(280px,max-content)_minmax(0,420px)]">
-                  <div className="flex flex-col items-start">
-                    <div className="w-full max-w-xs rounded-xl border border-border-subtle bg-white p-4 shadow-sm">
-                      <div className="flex justify-center">
-                        <QRErrorBoundary
-                          fallback={
-                            <div className="max-w-xs text-sm text-red-600">
-                              {t('scan.qrRenderFailed')} {t('scan.qrRenderFailedSeePayload')}
-                            </div>
-                          }
-                        >
-                          <QR
-                            value={String(qrContent)}
-                            size={240}
-                            level="H"
-                            logoSrc="/cas-id-logo.webp"
-                          />
-                        </QRErrorBoundary>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-sm text-text-muted">{t('scan.caption')}</p>
-                    <div className="mt-1">
-                      <ExpiresIn expiresAt={expiresAt} onExpired={() => setStatus('EXPIRED')} />
-                    </div>
-                  </div>
-                  <div className="max-w-sm space-y-2 text-sm text-text-main">
-                    <p>{t('scan.instruction')}</p>
-                    <div className="pt-2 text-xs font-medium uppercase tracking-wide text-text-muted">
-                      {t('scan.qrPayload')}
-                    </div>
-                    {/* Compact single-line link + copy button, replacing the
-                        old full-URL `<pre>` block -- the raw payload is
-                        rarely something anyone reads character-by-character;
-                        copying it (to paste into Cas ID, or share) is the
-                        actual use case. */}
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="min-w-0 flex-1 truncate rounded-md bg-gray-50 px-3 py-2 text-xs text-text-main"
-                        title={qrContent ?? undefined}
-                      >
-                        <span className="text-text-muted">{t('scan.linkLabel')} </span>
-                        {qrContent}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCopyQrLink}
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border-subtle bg-white px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:border-primary hover:text-primary"
-                      >
-                        <Icon
-                          icon={qrLinkCopied ? 'lucide:check' : 'lucide:copy'}
-                          className="h-3.5 w-3.5"
-                        />
-                        {qrLinkCopied ? t('scan.copied') : t('scan.copyLink')}
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={handleSyncStatus}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-strong"
-                      >
-                        {t('scan.syncStatus')}
-                      </button>
-                      {/* Only while still waiting for a scan -- once the
-                          signer has already approved (ACCEPTED), CAS is
-                          already finishing the signing round, so going back
-                          to fix the placement/signer info no longer means
-                          anything (and there is no CAS-side cancel to
-                          reflect it if we let them anyway). */}
-                      {(status === null || status === 'PENDING') && (
-                        <button
-                          type="button"
-                          onClick={handleBackToPlacement}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-white px-3.5 py-1.5 text-sm font-semibold text-primary transition hover:bg-surface-soft"
-                        >
-                          {t('scan.back')}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Unconditional -- covers both paths ("scan" or "tap the
-                    notification") as options, so it stays accurate whether
-                    or not a CCCD was actually supplied in step 1 (the only
-                    case CAS pushes a notification at all; see
-                    SignerConfigPanel's own hint) -- unlike the narrower
-                    `pushHint` this replaces, which specifically asserted a
-                    push was sent and so had to stay conditional on that. */}
-                <div className="mt-6 flex items-start gap-2 rounded-xl border border-border-subtle bg-surface-soft px-4 py-3 text-sm text-primary-strong">
-                  <Icon icon="lucide:info" className="mt-0.5 h-4 w-4 shrink-0" />
-                  <p>
-                    <span className="font-semibold">Tip:</span> {t('scan.tip')}
-                  </p>
-                </div>
-
-                <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-                  <div className="font-medium text-text-main">{t('scan.status')}</div>
-                  <div className="mt-1 space-y-1">
-                    {isPending && (
-                      <span className="inline-flex items-center gap-2 text-text-muted">
-                        <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-                        {status === 'ACCEPTED' ? t('scan.accepted') : t('scan.waiting')}
-                      </span>
-                    )}
-                  </div>
-                  {isTerminal && (
-                    <div className="mt-3 text-xs text-text-muted">
-                      <button
-                        type="button"
-                        className="rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                        onClick={resetFlow}
-                      >
-                        {t('common.startOver')}
-                      </button>
+              {/* The QR card owns the whole first screen (viewport minus the
+                  measured sticky header and <main>'s vertical padding), so
+                  the video guide below always starts past the fold and the
+                  ScrollCue points down to it. */}
+              <div
+                className="flex flex-col justify-center"
+                style={{ minHeight: `calc(100svh - ${stickyOffset}px - 2.5rem)` }}
+              >
+                <SigningCard className="flex flex-col">
+                  <SigningStepHeader
+                    stepNumber={2}
+                    title={t('scan.title')}
+                    trailingContent={progressLabel}
+                  />
+                  <p className="mt-1 text-sm text-text-muted">{t('scan.subtitle')}</p>
+                  {statusError && (
+                    <div className="mb-3 mt-3 rounded-md border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning-text">
+                      {t('scan.statusError')} <span className="font-mono">{statusError}</span>
                     </div>
                   )}
-                </div>
-              </SigningCard>
+                  <div className="mx-auto mt-6 grid gap-8 lg:grid-cols-[minmax(280px,max-content)_minmax(0,420px)]">
+                    <div className="flex flex-col items-start">
+                      <div className="w-full max-w-xs rounded-xl border border-border-subtle bg-white p-4 shadow-sm">
+                        <div className="flex justify-center">
+                          <QRErrorBoundary
+                            fallback={
+                              <div className="max-w-xs text-sm text-red-600">
+                                {t('scan.qrRenderFailed')} {t('scan.qrRenderFailedSeePayload')}
+                              </div>
+                            }
+                          >
+                            <QR
+                              value={String(qrContent)}
+                              size={240}
+                              level="H"
+                              logoSrc="/cas-id-logo.webp"
+                            />
+                          </QRErrorBoundary>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-sm text-text-muted">{t('scan.caption')}</p>
+                      <div className="mt-1">
+                        <ExpiresIn expiresAt={expiresAt} onExpired={() => setStatus('EXPIRED')} />
+                      </div>
+                    </div>
+                    <div className="max-w-sm space-y-2 text-sm text-text-main">
+                      <p>{t('scan.instruction')}</p>
+                      <div className="pt-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+                        {t('scan.qrPayload')}
+                      </div>
+                      {/* Compact single-line link + copy button, replacing the
+                          old full-URL `<pre>` block -- the raw payload is
+                          rarely something anyone reads character-by-character;
+                          copying it (to paste into Cas ID, or share) is the
+                          actual use case. */}
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="min-w-0 flex-1 truncate rounded-md bg-gray-50 px-3 py-2 text-xs text-text-main"
+                          title={qrContent ?? undefined}
+                        >
+                          <span className="text-text-muted">{t('scan.linkLabel')} </span>
+                          {qrContent}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleCopyQrLink}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border-subtle bg-white px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:border-primary hover:text-primary"
+                        >
+                          <Icon
+                            icon={qrLinkCopied ? 'lucide:check' : 'lucide:copy'}
+                            className="h-3.5 w-3.5"
+                          />
+                          {qrLinkCopied ? t('scan.copied') : t('scan.copyLink')}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={handleSyncStatus}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-strong"
+                        >
+                          {t('scan.syncStatus')}
+                        </button>
+                        {/* Only while still waiting for a scan -- once the
+                            signer has already approved (ACCEPTED), CAS is
+                            already finishing the signing round, so going back
+                            to fix the placement/signer info no longer means
+                            anything (and there is no CAS-side cancel to
+                            reflect it if we let them anyway). */}
+                        {(status === null || status === 'PENDING') && (
+                          <button
+                            type="button"
+                            onClick={handleBackToPlacement}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-white px-3.5 py-1.5 text-sm font-semibold text-primary transition hover:bg-surface-soft"
+                          >
+                            {t('scan.back')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Unconditional -- covers both paths ("scan" or "tap the
+                      notification") as options, so it stays accurate whether
+                      or not a CCCD was actually supplied in step 1 (the only
+                      case CAS pushes a notification at all; see
+                      SignerConfigPanel's own hint) -- unlike the narrower
+                      `pushHint` this replaces, which specifically asserted a
+                      push was sent and so had to stay conditional on that. */}
+                  <div className="mt-6 flex items-start gap-2 rounded-xl border border-border-subtle bg-surface-soft px-4 py-3 text-sm text-primary-strong">
+                    <Icon icon="lucide:info" className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p>
+                      <span className="font-semibold">Tip:</span> {t('scan.tip')}
+                    </p>
+                  </div>
+
+                  <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                    <div className="font-medium text-text-main">{t('scan.status')}</div>
+                    <div className="mt-1 space-y-1">
+                      {isPending && (
+                        <span className="inline-flex items-center gap-2 text-text-muted">
+                          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+                          {status === 'ACCEPTED' ? t('scan.accepted') : t('scan.waiting')}
+                        </span>
+                      )}
+                    </div>
+                    {isTerminal && (
+                      <div className="mt-3 text-xs text-text-muted">
+                        <button
+                          type="button"
+                          className="rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                          onClick={resetFlow}
+                        >
+                          {t('common.startOver')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </SigningCard>
+              </div>
+
+              <CasIdVideoGuide />
+              <ScrollCue targetId={CAS_ID_VIDEO_GUIDE_ID} label={t('scrollCue.scan')} />
             </section>
           )}
 
@@ -1581,6 +1624,16 @@ export function SigningWizard({
           )}
         </div>
       </main>
+
+      {/* Same full-width footer as the landing page, on the scan and done
+          steps. Not on "upload": that step is a PDF workspace whose sticky
+          columns are sized to the viewport. The Casso brand band stays on
+          the landing page only. */}
+      {step !== 'upload' && (
+        <div className="border-t border-border-subtle bg-white">
+          <Footer />
+        </div>
+      )}
 
       {showDownloadReminder && (
         <DownloadReminderModal

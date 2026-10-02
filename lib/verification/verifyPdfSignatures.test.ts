@@ -100,6 +100,60 @@ function buildPdfWithDocumentTimestamp(cert: forge.pki.Certificate, privateKey: 
   return pdf;
 }
 
+/** `count` incremental revisions, each adding one ordinary signature that
+ * covers the whole file as it was at that point -- like signing the same
+ * document over and over with "Tiếp tục ký". */
+function buildPdfWithSequentialSignatures(
+  count: number,
+  cert: forge.pki.Certificate,
+  privateKey: forge.pki.rsa.PrivateKey
+): Buffer {
+  let pdf = Buffer.from('%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n', 'latin1');
+  for (let i = 0; i < count; i += 1) {
+    const offset = pdf.length;
+    pdf = Buffer.concat([
+      pdf,
+      Buffer.from(`${signatureObject(2 + i, 'adbe.pkcs7.detached')}%%EOF\n`, 'latin1'),
+    ]);
+    const [a, b, c, d] = fillByteRange(pdf, offset);
+    const signed = Buffer.concat([pdf.subarray(a, a + b), pdf.subarray(c, c + d)]);
+    writeContents(pdf, offset, signDetached(signed, cert, privateKey));
+  }
+  return pdf;
+}
+
+describe('verifyPdfSignatures — many signatures in one file', () => {
+  const { cert, privateKey } = buildSelfSignedCert();
+  const certPem = forge.pki.certificateToPem(cert);
+  const trustStore: TrustStore = {
+    isConfigured: () => true,
+    isTrustedRoot: (pem) => pem.trim() === certPem.trim(),
+    getTrustedRootPems: () => [certPem],
+  };
+
+  it('verifies every one of 12 valid signatures, in file order', async () => {
+    const results = await verifyPdfSignatures(
+      buildPdfWithSequentialSignatures(12, cert, privateKey),
+      trustStore
+    );
+
+    expect(results).toHaveLength(12);
+    expect(results.map((r) => r.status)).toEqual(Array(12).fill('SIGNED_VALID'));
+    expect(results.map((r) => r.position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  it('still flags bytes appended after the newest signature', async () => {
+    const pdf = Buffer.concat([
+      buildPdfWithSequentialSignatures(12, cert, privateKey),
+      Buffer.from('99 0 obj\n<< /Injected true >>\nendobj\n', 'latin1'),
+    ]);
+    const results = await verifyPdfSignatures(pdf, trustStore);
+
+    expect(results.at(-1)!.status).toBe('CONTENT_DIGEST_MISMATCH');
+    expect(results.slice(0, -1).every((r) => r.status === 'SIGNED_VALID')).toBe(true);
+  });
+});
+
 describe('verifyPdfSignatures — unsupported SubFilters', () => {
   const { cert, privateKey } = buildSelfSignedCert();
   const certPem = forge.pki.certificateToPem(cert);

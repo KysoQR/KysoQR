@@ -216,7 +216,7 @@ export function VerificationResultCard({
     <div className="py-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-text-main">
-          {t('verify.signatureNumber', { number: index + 1 })}
+          {t('verify.signatureNumber', { number: result.position ?? index + 1 })}
         </span>
         <span
           className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${style.chip}`}

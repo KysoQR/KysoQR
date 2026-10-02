@@ -48,18 +48,50 @@
       "title": "5 phiên ký gần nhất",
       "downloadButton": "Tải xuống",
       "downloadError": "Không tải được file này (có thể đã hết lượt tải). Vui lòng dùng bản đã tải trước đó."
+    },
+    "branding": {
+      "eyebrow": "Hệ sinh thái Casso",
+      "title": "Ký bằng phương thức bạn đang có",
+      "subtitle": "KysoQR do Casso phát triển. Chữ ký số được cấp bởi các tổ chức cung cấp dịch vụ chứng thực chữ ký số (CA) được cấp phép tại Việt Nam.",
+      "availableBadge": "Dùng ngay trên KysoQR",
+      "inDevelopmentBadge": "Đang phát triển",
+      "providersLabel": "Nhà cung cấp chữ ký",
+      "registerFree": "Tặng 1000 chữ ký số miễn phí",
+      "cassoTagline": "Hệ sinh thái trợ thủ tài chính CASSO - Lựa chọn tin cậy của các doanh nghiệp dẫn đầu.",
+      "learnMore": "Tìm hiểu về Casso",
+      "methods": {
+        "casid": {
+          "name": "CAS ID",
+          "title": "Ký số từ xa với CAS ID",
+          "description": "Đăng ký chứng thư số cá nhân, tạo mẫu chữ ký và kích hoạt ngay trên điện thoại. Toàn bộ đăng ký, eKYC và kích hoạt diễn ra trong app CAS ID — không cần ra điểm giao dịch, không cần USB Token."
+        },
+        "vneid": {
+          "name": "VNeID",
+          "title": "VNeID",
+          "description": "Ký bằng chữ ký số cá nhân đã kích hoạt trên ứng dụng định danh điện tử VNeID."
+        },
+        "usbtoken": {
+          "name": "USB Token",
+          "title": "USB Token",
+          "description": "Ký bằng USB Token chữ ký số đã được cấp cho cá nhân hoặc doanh nghiệp."
+        }
+      }
     }
   },
   "nav": {
     "docs": "Tài liệu",
-    "api": "API",
-    "comingSoon": "Sắp có"
+    "api": "API",    "comingSoon": "Sắp có"
   },
   "footer": {
     "title1": "Bảo mật chuẩn quốc tế",
     "title2": "Ký nhanh trong giây lát",
     "title3": "Pháp lý vững chắc",
-    "footer": "© 2026 KysoQR. All rights reserved."
+    "footer": "© 2026 KysoQR. All rights reserved.",
+    "madeBy": "Một sản phẩm của"
+  },
+  "scrollCue": {
+    "landing": "Xem các phương thức ký",
+    "scan": "Chưa có chữ ký số? Kéo xuống để đăng ký"
   },
   "steps": {
     "uploadRequest": "Tải PDF & yêu cầu quyền",
@@ -123,6 +155,16 @@
     "description": "Hệ thống sẽ tạo mã QR để người ký phê duyệt yêu cầu ký này trong app Cas ID."
   },
   "scan": {
+    "videoGuide": {
+      "eyebrow": "Video hướng dẫn",
+      "title": "Xem nhanh toàn bộ thao tác đăng ký CAS CERT",
+      "points": {
+        "buttons": "Nắm nhanh vị trí các nút cần bấm trong ứng dụng Cas ID.",
+        "flow": "Xem trước luồng đăng ký, eKYC và kích hoạt chứng thư số.",
+        "mistakes": "Thao tác theo video để hạn chế nhập sai hoặc bỏ sót bước."
+      },
+      "videoTitle": "Hướng dẫn đăng ký chứng thư số CAS CERT trên app Cas ID"
+    },
     "title": "Quét QR (Cấp quyền ký tài liệu)",
     "subtitle": "Cho phép được ký tài liệu này bằng ứng dụng Cas ID của bạn.",
     "instruction": "Yêu cầu người ký quét mã QR này bằng ứng dụng Cas ID và phê duyệt quyền ký.",
@@ -143,7 +185,7 @@
     "linkLabel": "link:",
     "copyLink": "Sao chép liên kết",
     "copied": "Đã sao chép!",
-    "tip": "Mở CAS ID để quét QR cấp quyền ký hoặc nhấn vào thông báo mới gửi tới CAS ID của bạn.",
+    "tip": "Mở CAS ID để quét QR cấp quyền ký hoặc nhấn vào thông báo mới gửi tới CAS ID của bạn. Chưa có CAS ID? Xem video hướng dẫn đăng ký ngay bên dưới.",
     "aria": { "qrCode": "Mã QR" }
   },
   "sign": {
@@ -292,8 +334,7 @@
   },
   "signatureHistory": {
     "title": "Lịch sử ký",
-    "subtitle_other": "Tài liệu này đã có {{count}} chữ ký số trước đó.",
-    "closeAriaLabel": "Đóng lịch sử ký",
+    "subtitle_other": "Tài liệu này đã có {{count}} chữ ký số trước đó.",    "closeAriaLabel": "Đóng lịch sử ký",
     "chain": {
       "title": "Chuỗi chứng thư số",
       "ca": "Tổ chức phát hành (CA)",
