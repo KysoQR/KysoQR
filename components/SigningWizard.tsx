@@ -37,7 +37,6 @@ import type { SigningRoundDetail } from '@/lib/cas/CasProvider';
 import type { VerificationResult } from '@/lib/verification/verifyPdfSignatures';
 import { CAS_ID_VIDEO_GUIDE_ID, CasIdVideoGuide } from './signing/CasIdVideoGuide';
 import { ScrollCue } from './ScrollCue';
-import { CassoBrandBand } from './home/CassoBrandBand';
 import Footer from './Footer';
 
 /**
@@ -1609,12 +1608,12 @@ export function SigningWizard({
         </div>
       </main>
 
-      {/* Same full-width Casso band + footer as the landing page, on the
-          scan and done steps. Not on "upload": that step is a PDF workspace
-          whose sticky columns are sized to the viewport. */}
+      {/* Same full-width footer as the landing page, on the scan and done
+          steps. Not on "upload": that step is a PDF workspace whose sticky
+          columns are sized to the viewport. The Casso brand band stays on
+          the landing page only. */}
       {step !== 'upload' && (
-        <div className="bg-white">
-          <CassoBrandBand />
+        <div className="border-t border-border-subtle bg-white">
           <Footer />
         </div>
       )}
