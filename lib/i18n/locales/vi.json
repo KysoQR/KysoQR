@@ -56,7 +56,7 @@
       "availableBadge": "Dùng ngay trên KysoQR",
       "inDevelopmentBadge": "Đang phát triển",
       "providersLabel": "Nhà cung cấp chữ ký",
-      "registerFree": "Đăng ký chữ ký số miễn phí",
+      "registerFree": "Tặng 1000 chữ ký số miễn phí",
       "cassoTagline": "Hệ sinh thái trợ thủ tài chính CASSO - Lựa chọn tin cậy của các doanh nghiệp dẫn đầu.",
       "learnMore": "Tìm hiểu về Casso",
       "methods": {
@@ -92,7 +92,7 @@
   },
   "scrollCue": {
     "landing": "Xem các phương thức ký",
-    "scan": "Chưa có CAS ID? Xem video hướng dẫn"
+    "scan": "Chưa có chữ ký số? Kéo xuống để đăng ký"
   },
   "steps": {
     "uploadRequest": "Tải PDF & yêu cầu quyền",

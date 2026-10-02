@@ -127,7 +127,7 @@ function MethodCard({ method }: { method: SigningMethod }) {
           href={CAS_ID_REGISTER_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-auto inline-flex min-h-11 items-center self-start rounded-full bg-primary px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
+          className="animate-cta-glow mt-auto inline-flex min-h-11 items-center self-start rounded-full bg-primary px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
         >
           {t('home.branding.registerFree')}
         </a>
