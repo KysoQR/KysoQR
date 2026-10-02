@@ -81,8 +81,7 @@
   },
   "nav": {
     "docs": "Docs",
-    "api": "API",
-    "comingSoon": "Coming soon"
+    "api": "API",    "comingSoon": "Coming soon"
   },
   "footer": {
     "title1": "Internationally standard security",
@@ -337,8 +336,7 @@
   "signatureHistory": {
     "title": "Signature history",
     "subtitle_one": "This document already has {{count}} existing digital signature.",
-    "subtitle_other": "This document already has {{count}} existing digital signatures.",
-    "closeAriaLabel": "Close signature history",
+    "subtitle_other": "This document already has {{count}} existing digital signatures.",    "closeAriaLabel": "Close signature history",
     "chain": {
       "title": "Certificate chain",
       "ca": "Issuing CA",

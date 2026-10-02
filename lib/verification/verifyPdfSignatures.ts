@@ -42,6 +42,17 @@ export interface VerificationResult {
    * this just tells the UI the certificate has since expired as of "now". */
   certificateExpiredNow?: boolean | undefined;
   contentIntact?: boolean | undefined;
+  /** 1-based position of this signature in the file (oldest = 1). */
+  position?: number | undefined;
+}
+
+/** Technical "why" behind a non-valid verdict, for the server log only --
+ * never sent to the client. */
+export type VerificationLogDetail = Record<string, string | number | boolean | number[] | undefined>;
+
+export interface DetailedVerificationResult {
+  result: VerificationResult;
+  detail?: VerificationLogDetail | undefined;
 }
 
 function toVerificationCertificate(
@@ -62,7 +73,7 @@ async function verifyOneSignature(
   extracted: ExtractCmsSuccess,
   trustStore: TrustStore,
   wholeFileCovered: boolean
-): Promise<VerificationResult> {
+): Promise<DetailedVerificationResult> {
   const { cmsDer, byteRange, dictSigningTime } = extracted;
 
   const sigCheck = verifySignerInfoSignature(cmsDer, pdfBytes, byteRange);
@@ -79,19 +90,25 @@ async function verifyOneSignature(
 
   if (!sigCheck.ok && sigCheck.reason === 'UNSUPPORTED_KEY_ALGORITHM') {
     return {
-      status: 'UNSUPPORTED_ALGORITHM',
-      message: `The signature uses an unsupported key algorithm (${sigCheck.keyAlgorithm ?? 'unknown'}).`,
-      signedAt,
+      result: {
+        status: 'UNSUPPORTED_ALGORITHM',
+        message: `The signature uses an unsupported key algorithm (${sigCheck.keyAlgorithm ?? 'unknown'}).`,
+        signedAt,
+      },
+      detail: { reason: sigCheck.reason, keyAlgorithm: sigCheck.keyAlgorithm },
     };
   }
 
   if (!sigCheck.ok) {
     return {
-      status: 'SIGNATURE_INVALID',
-      message:
-        'The signature could not be cryptographically verified against the signer’s certificate.',
-      signedAt,
-      certificate,
+      result: {
+        status: 'SIGNATURE_INVALID',
+        message:
+          'The signature could not be cryptographically verified against the signer’s certificate.',
+        signedAt,
+        certificate,
+      },
+      detail: { reason: sigCheck.reason, certSerial: certificate?.serialNumber },
     };
   }
 
@@ -104,22 +121,36 @@ async function verifyOneSignature(
   const digestCheck = verifyPdfContentDigest(pdfBytes, cmsDer, byteRange);
   if (!digestCheck.ok || !wholeFileCovered) {
     return {
-      status: 'CONTENT_DIGEST_MISMATCH',
-      message: 'The PDF content does not match what was actually signed.',
-      signedAt,
-      certificate,
-      contentIntact: false,
+      result: {
+        status: 'CONTENT_DIGEST_MISMATCH',
+        message: 'The PDF content does not match what was actually signed.',
+        signedAt,
+        certificate,
+        contentIntact: false,
+      },
+      detail: {
+        // Which of the two checks failed: the signed bytes themselves were
+        // changed, or extra bytes were appended after the newest signature.
+        reason: digestCheck.ok ? 'BYTES_AFTER_LAST_SIGNATURE' : digestCheck.reason,
+        byteRange: [...byteRange],
+        signedEnd: byteRange[2] + byteRange[3],
+        fileLength: pdfBytes.length,
+        certSerial: certificate?.serialNumber,
+      },
     };
   }
 
   if (!trustStore.isConfigured()) {
     return {
-      status: 'TRUST_STORE_NOT_CONFIGURED',
-      message:
-        'The server trust store is not configured; the certificate chain could not be anchored.',
-      signedAt,
-      certificate,
-      contentIntact: true,
+      result: {
+        status: 'TRUST_STORE_NOT_CONFIGURED',
+        message:
+          'The server trust store is not configured; the certificate chain could not be anchored.',
+        signedAt,
+        certificate,
+        contentIntact: true,
+      },
+      detail: { reason: 'TRUST_STORE_EMPTY' },
     };
   }
 
@@ -134,11 +165,14 @@ async function verifyOneSignature(
 
   if (!chainResult) {
     return {
-      status: 'CHAIN_VALIDATION_FAILED',
-      message: 'The PDF signature contains no valid certificate chain.',
-      signedAt,
-      certificate,
-      contentIntact: true,
+      result: {
+        status: 'CHAIN_VALIDATION_FAILED',
+        message: 'The PDF signature contains no valid certificate chain.',
+        signedAt,
+        certificate,
+        contentIntact: true,
+      },
+      detail: { reason: 'NO_CERTIFICATE_CHAIN', certSerial: certificate?.serialNumber },
     };
   }
 
@@ -148,55 +182,87 @@ async function verifyOneSignature(
       // exact case as still SIGNED_VALID. An untrusted root is now always
       // its own distinct, non-valid status.
       return {
-        status: 'ROOT_NOT_TRUSTED',
-        message:
-          'The signature and content are cryptographically valid, but the root CA is not in the trust store.',
-        signedAt,
-        certificate,
-        certificateChain: chainResult.chain,
-        certificateChainRootNotInTrustStore: true,
-        certificateExpiredNow: chainResult.certificateExpiredNow,
-        contentIntact: true,
+        result: {
+          status: 'ROOT_NOT_TRUSTED',
+          message:
+            'The signature and content are cryptographically valid, but the root CA is not in the trust store.',
+          signedAt,
+          certificate,
+          certificateChain: chainResult.chain,
+          certificateChainRootNotInTrustStore: true,
+          certificateExpiredNow: chainResult.certificateExpiredNow,
+          contentIntact: true,
+        },
+        detail: {
+          reason: 'ROOT_NOT_IN_TRUST_STORE',
+          rootIssuer: chainResult.chain[chainResult.chain.length - 1]?.issuer,
+          certSerial: certificate?.serialNumber,
+        },
       };
     }
 
     return {
-      status: 'CHAIN_VALIDATION_FAILED',
-      message: chainResult.error ?? 'The signature certificate chain is invalid.',
-      signedAt,
-      certificate,
-      certificateChain: chainResult.chain,
-      contentIntact: true,
+      result: {
+        status: 'CHAIN_VALIDATION_FAILED',
+        message: chainResult.error ?? 'The signature certificate chain is invalid.',
+        signedAt,
+        certificate,
+        certificateChain: chainResult.chain,
+        contentIntact: true,
+      },
+      detail: {
+        reason: 'CHAIN_INVALID',
+        error: chainResult.error,
+        chainLength: chainResult.chain.length,
+        certSerial: certificate?.serialNumber,
+      },
     };
   }
 
   return {
-    status: 'SIGNED_VALID',
-    message: chainResult.certificateExpiredNow
-      ? 'The signature was valid at signing time; the certificate has since expired.'
-      : 'The signature, content, and certificate chain are all valid.',
-    signedAt,
-    certificate,
-    certificateChain: chainResult.chain,
-    certificateExpiredNow: chainResult.certificateExpiredNow,
-    contentIntact: true,
+    result: {
+      status: 'SIGNED_VALID',
+      message: chainResult.certificateExpiredNow
+        ? 'The signature was valid at signing time; the certificate has since expired.'
+        : 'The signature, content, and certificate chain are all valid.',
+      signedAt,
+      certificate,
+      certificateChain: chainResult.chain,
+      certificateExpiredNow: chainResult.certificateExpiredNow,
+      contentIntact: true,
+    },
   };
 }
 
 /**
- * Upper bound on how many embedded signatures a single upload will actually
- * verify. Each signature can fan out into several outbound network calls
- * (AIA intermediate-CA fetch + OCSP + CRL, each independently SSRF-guarded
- * but still real requests) via `verifyCertificateChainFromCmsBuffer` --
- * without a cap, a PDF hand-crafted with dozens of fabricated
- * `/ByteRange`+`/SubFilter`+`/Contents` signature-dictionary-shaped blocks
- * (trivial: extraction is plain byte-scanning, not real PDF object parsing)
- * could fan out into a large multiple of that in outbound calls per request,
- * amplifying both cost and the surface of any one guarded-fetch edge case.
- * A real document with more than a handful of independent signatures is
- * already unusual -- excess entries beyond this cap are simply not verified.
+ * How many signatures are verified at the same time. Every signature in the
+ * file IS verified (real contracts can carry many), but each one can fan out
+ * into several outbound network calls (AIA intermediate-CA fetch + OCSP +
+ * CRL, each SSRF-guarded but still real requests) -- running them all at
+ * once would let a PDF stuffed with hundreds of signatures fire a burst of
+ * outbound requests in one go. A small pool keeps that bounded.
  */
-const MAX_SIGNATURES_PER_DOCUMENT = 10;
+const VERIFY_CONCURRENCY = 4;
+
+/** `Promise.all(items.map(fn))`, but with at most `limit` calls in flight;
+ * results keep the input order. */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await fn(items[index]!, index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 /**
  * Verify every CMS signature embedded in a PDF, independent of any DB/CAS
@@ -211,43 +277,65 @@ export async function verifyPdfSignatures(
   pdfBytes: Buffer,
   trustStore: TrustStore
 ): Promise<VerificationResult[]> {
+  const detailed = await verifyPdfSignaturesDetailed(pdfBytes, trustStore);
+  return detailed.map((entry) => entry.result);
+}
+
+/** Same as `verifyPdfSignatures`, plus a log-only `detail` per entry
+ * explaining any non-valid verdict (see `VerificationLogDetail`). */
+export async function verifyPdfSignaturesDetailed(
+  pdfBytes: Buffer,
+  trustStore: TrustStore
+): Promise<DetailedVerificationResult[]> {
   const extraction = extractAllCmsFromSignedPdf(pdfBytes);
   if (!extraction.ok) {
     if (extraction.error.kind === 'NO_SIGNATURE_FIELD_FOUND') return [];
     return [
       {
-        status: 'SIGNATURE_INVALID',
-        message: 'The PDF signature structure is malformed and could not be parsed.',
+        result: {
+          status: 'SIGNATURE_INVALID',
+          message: 'The PDF signature structure is malformed and could not be parsed.',
+        },
+        detail: { reason: extraction.error.kind },
       },
     ];
   }
 
-  const values = extraction.values.slice(0, MAX_SIGNATURES_PER_DOCUMENT);
+  const all = extraction.values;
 
-  // Coverage is still judged on the newest entry of any kind (a PAdES-LTA
+  // Coverage is judged on the newest entry of any kind (a PAdES-LTA
   // document timestamp usually is the newest one), but the verdict is
-  // attached to the newest signature we actually verify -- otherwise bytes
-  // appended after an unsupported last entry would go unreported.
-  const wholeFileCovered = isLastSignatureCoveringWholeFile(values, pdfBytes.length);
+  // attached to the newest signature we actually verify, so bytes appended
+  // after an unsupported last entry still get reported.
+  const wholeFileCovered = isLastSignatureCoveringWholeFile(all, pdfBytes.length);
   let lastSupportedIndex = -1;
-  values.forEach((value, index) => {
+  all.forEach((value, index) => {
     if (value.supported) lastSupportedIndex = index;
   });
 
-  return Promise.all(
-    values.map((value, index) =>
-      value.supported
-        ? verifyOneSignature(
+  return mapWithConcurrency(
+    all,
+    VERIFY_CONCURRENCY,
+    async (value, index): Promise<DetailedVerificationResult> => {
+      const verified: DetailedVerificationResult = value.supported
+        ? await verifyOneSignature(
             pdfBytes,
             value,
             trustStore,
             index === lastSupportedIndex ? wholeFileCovered : true
-          ).catch((): VerificationResult => ({
-            status: 'SIGNATURE_INVALID',
-            message: 'An unexpected error occurred while verifying this signature.',
+          ).catch((error: unknown) => ({
+            result: {
+              status: 'SIGNATURE_INVALID',
+              message: 'An unexpected error occurred while verifying this signature.',
+            },
+            detail: {
+              reason: 'UNEXPECTED_ERROR',
+              error: error instanceof Error ? error.message : String(error),
+            },
           }))
-        : Promise.resolve(unsupportedSubFilterResult(value))
-    )
+        : { result: unsupportedSubFilterResult(value), detail: { subFilter: value.subFilter } };
+      return { ...verified, result: { ...verified.result, position: index + 1 } };
+    }
   );
 }
 

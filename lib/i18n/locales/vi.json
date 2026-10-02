@@ -80,8 +80,7 @@
   },
   "nav": {
     "docs": "Tài liệu",
-    "api": "API",
-    "comingSoon": "Sắp có"
+    "api": "API",    "comingSoon": "Sắp có"
   },
   "footer": {
     "title1": "Bảo mật chuẩn quốc tế",
@@ -335,8 +334,7 @@
   },
   "signatureHistory": {
     "title": "Lịch sử ký",
-    "subtitle_other": "Tài liệu này đã có {{count}} chữ ký số trước đó.",
-    "closeAriaLabel": "Đóng lịch sử ký",
+    "subtitle_other": "Tài liệu này đã có {{count}} chữ ký số trước đó.",    "closeAriaLabel": "Đóng lịch sử ký",
     "chain": {
       "title": "Chuỗi chứng thư số",
       "ca": "Tổ chức phát hành (CA)",

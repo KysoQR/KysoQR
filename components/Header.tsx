@@ -13,9 +13,26 @@ const externalLinkProps = (href: string) =>
 
 /** `href: null` = shown but not clickable yet ("coming soon"). The home page
  * (`/`) matches no tab, so nothing is underlined there. */
-const NAV_ITEMS: { key: string; href: string | null; matchPath: string | null; labelKey: string }[] = [
+type NavItem = {
+  key: string;
+  href: string | null;
+  matchPath: string | null;
+  labelKey: string;
+  /** Literal label, used instead of `labelKey` when set. */
+  label?: string;
+};
+
+/** Optional extra external link, configured per deployment (inlined at
+ * build time). Missing/empty values or a non-http(s) URL mean no link. */
+const EXTRA_NAV_URL = process.env.NEXT_PUBLIC_EXTRA_NAV_URL?.trim();
+const EXTRA_NAV_LABEL = process.env.NEXT_PUBLIC_EXTRA_NAV_LABEL?.trim();
+
+const NAV_ITEMS: NavItem[] = [
   { key: 'docs', href: '/docs#description/introduction', matchPath: '/docs', labelKey: 'nav.docs' },
   { key: 'api', href: 'https://cas.so/general/api/product-esign', matchPath: null, labelKey: 'nav.api' },
+  ...(EXTRA_NAV_URL && EXTRA_NAV_LABEL && /^https?:\/\//.test(EXTRA_NAV_URL)
+    ? [{ key: 'extra', href: EXTRA_NAV_URL, matchPath: null, labelKey: '', label: EXTRA_NAV_LABEL }]
+    : []),
 ];
 
 /** Simplified port of x-sign-web/src/components/Header.tsx — nav tabs
@@ -92,7 +109,7 @@ export default function Header({
                       title={t('nav.comingSoon')}
                       className="-mb-px inline-flex cursor-not-allowed items-center border-b-2 border-transparent px-1.5 pt-1 pb-2 font-semibold opacity-50"
                     >
-                      {t(item.labelKey)}
+                      {item.label ?? t(item.labelKey)}
                     </span>
                   );
                 }
@@ -109,7 +126,7 @@ export default function Header({
                         : 'border-transparent hover:text-text-main'
                     }`}
                   >
-                    {t(item.labelKey)}
+                    {item.label ?? t(item.labelKey)}
                   </Link>
                 );
               })}
@@ -176,7 +193,7 @@ export default function Header({
                           : 'hover:text-text-main'
                       }`}
                     >
-                      {t(item.labelKey)}
+                      {item.label ?? t(item.labelKey)}
                     </Link>
                   ) : (
                     <span
@@ -185,7 +202,7 @@ export default function Header({
                       title={t('nav.comingSoon')}
                       className="cursor-not-allowed rounded px-4 py-3 opacity-50"
                     >
-                      {t(item.labelKey)}
+                      {item.label ?? t(item.labelKey)}
                     </span>
                   )
                 )}
