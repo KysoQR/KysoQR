@@ -51,7 +51,7 @@ export function CasIdVideoGuide() {
             href={CAS_ID_REGISTER_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
+            className="animate-cta-glow inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
           >
             {t('home.branding.registerFree')}
             <Icon icon="lucide:arrow-up-right" className="h-4 w-4" aria-hidden="true" />

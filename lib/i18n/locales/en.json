@@ -57,7 +57,7 @@
       "availableBadge": "Available on KysoQR",
       "inDevelopmentBadge": "In development",
       "providersLabel": "Signature providers",
-      "registerFree": "Register a free digital signature",
+      "registerFree": "Get 1,000 free digital signatures",
       "cassoTagline": "CASSO, the financial assistant ecosystem trusted by leading businesses.",
       "learnMore": "Learn about Casso",
       "methods": {
@@ -93,7 +93,7 @@
   },
   "scrollCue": {
     "landing": "See signing methods",
-    "scan": "No CAS ID yet? Watch the video guide"
+    "scan": "No digital signature yet? Scroll down to register"
   },
   "steps": {
     "uploadRequest": "Upload PDF & request permission",
