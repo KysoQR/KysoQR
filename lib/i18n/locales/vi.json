@@ -80,7 +80,9 @@
   },
   "nav": {
     "docs": "Tài liệu",
-    "api": "API",    "comingSoon": "Sắp có"
+    "api": "API",
+    "letter": "Tâm thư",
+    "comingSoon": "Sắp có"
   },
   "footer": {
     "title1": "Bảo mật chuẩn quốc tế",

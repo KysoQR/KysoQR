@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from './LanguageSwitcher';
 import { GithubStarsButton } from './GithubStarsButton';
+import { TamThuLabel, TamThuPopup, useTamThuHtml } from './TamThu';
 
 /** External nav targets (e.g. cas.so API docs) open in a new tab. */
 const externalLinkProps = (href: string) =>
@@ -13,26 +14,9 @@ const externalLinkProps = (href: string) =>
 
 /** `href: null` = shown but not clickable yet ("coming soon"). The home page
  * (`/`) matches no tab, so nothing is underlined there. */
-type NavItem = {
-  key: string;
-  href: string | null;
-  matchPath: string | null;
-  labelKey: string;
-  /** Literal label, used instead of `labelKey` when set. */
-  label?: string;
-};
-
-/** Optional extra external link, configured per deployment (inlined at
- * build time). Missing/empty values or a non-http(s) URL mean no link. */
-const EXTRA_NAV_URL = process.env.NEXT_PUBLIC_EXTRA_NAV_URL?.trim();
-const EXTRA_NAV_LABEL = process.env.NEXT_PUBLIC_EXTRA_NAV_LABEL?.trim();
-
-const NAV_ITEMS: NavItem[] = [
-  { key: 'docs', href: '/docs#description/introduction', matchPath: '/docs', labelKey: 'nav.docs' },
+const NAV_ITEMS: { key: string; href: string | null; matchPath: string | null; labelKey: string }[] = [
   { key: 'api', href: 'https://cas.so/general/api/product-esign', matchPath: null, labelKey: 'nav.api' },
-  ...(EXTRA_NAV_URL && EXTRA_NAV_LABEL && /^https?:\/\//.test(EXTRA_NAV_URL)
-    ? [{ key: 'extra', href: EXTRA_NAV_URL, matchPath: null, labelKey: '', label: EXTRA_NAV_LABEL }]
-    : []),
+  { key: 'docs', href: '/docs#description/introduction', matchPath: '/docs', labelKey: 'nav.docs' },
 ];
 
 /** Simplified port of x-sign-web/src/components/Header.tsx — nav tabs
@@ -73,6 +57,9 @@ export default function Header({
   const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const pathname = usePathname();
+  /** `null` = no tamthu.md in the codebase -> no "Tâm thư" button. */
+  const tamThuHtml = useTamThuHtml();
+  const [isTamThuOpen, setIsTamThuOpen] = useState(false);
 
   return (
     <>
@@ -100,6 +87,15 @@ export default function Header({
               className="hidden items-stretch gap-4 text-md text-text-secondary sm:flex"
               aria-label="Primary"
             >
+              {tamThuHtml && (
+                <button
+                  type="button"
+                  onClick={() => setIsTamThuOpen(true)}
+                  className="-mb-px inline-flex items-center rounded border-b-2 border-transparent px-1.5 pt-1 pb-2 font-semibold outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <TamThuLabel />
+                </button>
+              )}
               {NAV_ITEMS.map((item) => {
                 if (!item.href) {
                   return (
@@ -109,7 +105,7 @@ export default function Header({
                       title={t('nav.comingSoon')}
                       className="-mb-px inline-flex cursor-not-allowed items-center border-b-2 border-transparent px-1.5 pt-1 pb-2 font-semibold opacity-50"
                     >
-                      {item.label ?? t(item.labelKey)}
+                      {t(item.labelKey)}
                     </span>
                   );
                 }
@@ -126,7 +122,7 @@ export default function Header({
                         : 'border-transparent hover:text-text-main'
                     }`}
                   >
-                    {item.label ?? t(item.labelKey)}
+                    {t(item.labelKey)}
                   </Link>
                 );
               })}
@@ -180,6 +176,18 @@ export default function Header({
                 </button>
               </div>
               <nav className="flex flex-col gap-0 px-4 py-4 text-md font-semibold text-text-secondary">
+                {tamThuHtml && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setIsTamThuOpen(true);
+                    }}
+                    className="rounded px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    <TamThuLabel />
+                  </button>
+                )}
                 {NAV_ITEMS.map((item) =>
                   item.href ? (
                     <Link
@@ -193,7 +201,7 @@ export default function Header({
                           : 'hover:text-text-main'
                       }`}
                     >
-                      {item.label ?? t(item.labelKey)}
+                      {t(item.labelKey)}
                     </Link>
                   ) : (
                     <span
@@ -202,7 +210,7 @@ export default function Header({
                       title={t('nav.comingSoon')}
                       className="cursor-not-allowed rounded px-4 py-3 opacity-50"
                     >
-                      {item.label ?? t(item.labelKey)}
+                      {t(item.labelKey)}
                     </span>
                   )
                 )}
@@ -210,6 +218,12 @@ export default function Header({
             </div>
           </div>
         </>
+      )}
+
+      {/* Rendered here, not inside the mobile menu, so closing the menu on
+          click doesn't unmount the popup it just opened. */}
+      {tamThuHtml && isTamThuOpen && (
+        <TamThuPopup html={tamThuHtml} onClose={() => setIsTamThuOpen(false)} />
       )}
     </>
   );

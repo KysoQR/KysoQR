@@ -163,10 +163,147 @@ body {
   animation-play-state: paused;
 }
 
+/* "Tâm thư" nav button: a light band sweeping across gradient-clipped text
+   plus a twinkling sparkle icon. Only colours/opacity/a tiny scale change,
+   so the header's layout (and page width) never moves. */
+@keyframes tamthuShimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  60%,
+  100% {
+    background-position: 0% 50%;
+  }
+}
+@keyframes tamthuSparkle {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.85) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1) rotate(12deg);
+  }
+}
+.tamthu-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-primary-strong) 0%,
+    var(--color-primary-strong) 35%,
+    #34d399 45%,
+    #fde68a 50%,
+    #34d399 55%,
+    var(--color-primary-strong) 65%,
+    var(--color-primary-strong) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: tamthuShimmer 2.6s ease-in-out infinite;
+}
+.tamthu-sparkle {
+  animation: tamthuSparkle 1.8s ease-in-out infinite;
+}
+.tamthu-label:hover .tamthu-shimmer,
+.tamthu-label:hover .tamthu-sparkle {
+  animation-play-state: paused;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-cta-glow,
   .animate-scroll-cue,
-  .animate-ky-ripple {
+  .animate-ky-ripple,
+  .tamthu-shimmer,
+  .tamthu-sparkle {
     animation: none;
   }
+}
+
+/* Markdown rendered from the optional tamthu.md ("Tâm thư" popup). */
+.md-content {
+  color: var(--color-text-main);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+.md-content > * + * {
+  margin-top: 0.85em;
+}
+.md-content h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-primary-strong);
+}
+.md-content h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 1.4em;
+}
+.md-content h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-top: 1.2em;
+}
+.md-content ul {
+  list-style: disc;
+  padding-left: 1.4em;
+}
+.md-content ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+}
+.md-content li + li {
+  margin-top: 0.3em;
+}
+.md-content a {
+  color: var(--color-primary-strong);
+  text-decoration: underline;
+}
+.md-content blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding-left: 1em;
+  font-style: italic;
+}
+.md-content strong {
+  font-weight: 700;
+}
+.md-content hr {
+  border-color: var(--color-border-subtle, #e5e7eb);
+}
+.md-content img {
+  max-width: 100%;
+  height: auto;
+}
+.md-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.md-content th,
+.md-content td {
+  border: 1px solid var(--color-border-subtle);
+  padding: 0.4em 0.6em;
+  text-align: left;
+  vertical-align: top;
+}
+.md-content code {
+  font-size: 0.85em;
+  background: rgb(0 0 0 / 0.05);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+  overflow-wrap: anywhere;
+}
+.md-content pre {
+  overflow-x: auto;
+  background: rgb(0 0 0 / 0.05);
+  border-radius: 8px;
+  padding: 0.8em 1em;
+}
+.md-content pre code {
+  background: none;
+  padding: 0;
 }
