@@ -81,7 +81,9 @@
   },
   "nav": {
     "docs": "Docs",
-    "api": "API",    "comingSoon": "Coming soon"
+    "api": "API",
+    "letter": "Letter",
+    "comingSoon": "Coming soon"
   },
   "footer": {
     "title1": "Internationally standard security",
