@@ -90,6 +90,10 @@
     "footer": "© 2026 KysoQR. All rights reserved.",
     "madeBy": "Một sản phẩm của"
   },
+  "scrollCue": {
+    "landing": "Xem các phương thức ký",
+    "scan": "Chưa có CAS ID? Xem video hướng dẫn"
+  },
   "steps": {
     "uploadRequest": "Tải PDF & yêu cầu quyền",
     "scan": "Quét QR",
@@ -152,6 +156,16 @@
     "description": "Hệ thống sẽ tạo mã QR để người ký phê duyệt yêu cầu ký này trong app Cas ID."
   },
   "scan": {
+    "videoGuide": {
+      "eyebrow": "Video hướng dẫn",
+      "title": "Xem nhanh toàn bộ thao tác đăng ký CAS CERT",
+      "points": {
+        "buttons": "Nắm nhanh vị trí các nút cần bấm trong ứng dụng Cas ID.",
+        "flow": "Xem trước luồng đăng ký, eKYC và kích hoạt chứng thư số.",
+        "mistakes": "Thao tác theo video để hạn chế nhập sai hoặc bỏ sót bước."
+      },
+      "videoTitle": "Hướng dẫn đăng ký chứng thư số CAS CERT trên app Cas ID"
+    },
     "title": "Quét QR (Cấp quyền ký tài liệu)",
     "subtitle": "Cho phép được ký tài liệu này bằng ứng dụng Cas ID của bạn.",
     "instruction": "Yêu cầu người ký quét mã QR này bằng ứng dụng Cas ID và phê duyệt quyền ký.",
@@ -172,7 +186,7 @@
     "linkLabel": "link:",
     "copyLink": "Sao chép liên kết",
     "copied": "Đã sao chép!",
-    "tip": "Mở CAS ID để quét QR cấp quyền ký hoặc nhấn vào thông báo mới gửi tới CAS ID của bạn.",
+    "tip": "Mở CAS ID để quét QR cấp quyền ký hoặc nhấn vào thông báo mới gửi tới CAS ID của bạn. Chưa có CAS ID? Xem video hướng dẫn đăng ký ngay bên dưới.",
     "aria": { "qrCode": "Mã QR" }
   },
   "sign": {

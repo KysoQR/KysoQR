@@ -35,6 +35,8 @@ import { downloadSignedPdfBlob as fetchSignedPdfBytes, signedFileName } from '@/
 import { lookupSigningRound } from '@/lib/signingRoundLookup';
 import type { SigningRoundDetail } from '@/lib/cas/CasProvider';
 import type { VerificationResult } from '@/lib/verification/verifyPdfSignatures';
+import { CAS_ID_VIDEO_GUIDE_ID, CasIdVideoGuide } from './signing/CasIdVideoGuide';
+import { ScrollCue } from './ScrollCue';
 
 /**
  * Signing wizard — UI/UX ported from x-sign-web (IntentSigningPage +
@@ -1437,6 +1439,9 @@ export function SigningWizard({
                   )}
                 </div>
               </SigningCard>
+
+              <CasIdVideoGuide />
+              <ScrollCue targetId={CAS_ID_VIDEO_GUIDE_ID} label={t('scrollCue.scan')} />
             </section>
           )}
 

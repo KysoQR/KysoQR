@@ -121,3 +121,23 @@ body {
 .animate-ky-ripple {
   animation: kyRipple 1.6s ease-out infinite;
 }
+
+/* Bouncing chevron inside ScrollCue ("scroll down" hint). */
+@keyframes scrollCueBounce {
+  0%,
+  100% {
+    transform: translateY(-2px);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+.animate-scroll-cue {
+  animation: scrollCueBounce 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-scroll-cue,
+  .animate-ky-ripple {
+    animation: none;
+  }
+}

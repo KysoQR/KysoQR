@@ -5,7 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import Header from './Header';
 import Footer from './Footer';
-import { SigningMethodsSection } from './home/SigningMethodsSection';
+import { SIGNING_METHODS_SECTION_ID, SigningMethodsSection } from './home/SigningMethodsSection';
+import { ScrollCue } from './ScrollCue';
 import { CassoBrandBand } from './home/CassoBrandBand';
 import { ButtonSpinner, InlineSpinner } from './signing/Spinners';
 import { MAX_SIGN_UPLOAD_SIZE_MB, MAX_UPLOAD_SIZE_MB } from './signing/constants';
@@ -385,6 +386,7 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
       </main>
 
       <SigningMethodsSection />
+      <ScrollCue targetId={SIGNING_METHODS_SECTION_ID} label={t('scrollCue.landing')} />
       <CassoBrandBand />
 
       {/* The lookup FORM stays inline (always visible, see the comment

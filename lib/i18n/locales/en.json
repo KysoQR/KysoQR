@@ -91,6 +91,10 @@
     "footer": "© 2026 KysoQR. All rights reserved.",
     "madeBy": "A product of"
   },
+  "scrollCue": {
+    "landing": "See signing methods",
+    "scan": "No CAS ID yet? Watch the video guide"
+  },
   "steps": {
     "uploadRequest": "Upload PDF & request permission",
     "scan": "Scan QR",
@@ -153,6 +157,16 @@
     "description": "We will generate a QR code for the signer to approve this signing request in the Cas ID app."
   },
   "scan": {
+    "videoGuide": {
+      "eyebrow": "Video guide",
+      "title": "See every step of CAS CERT registration",
+      "points": {
+        "buttons": "Learn where each button is in the Cas ID app.",
+        "flow": "Preview the registration, eKYC and certificate activation flow.",
+        "mistakes": "Follow along to avoid typos or skipped steps."
+      },
+      "videoTitle": "How to register a CAS CERT certificate in the Cas ID app"
+    },
     "title": "Scan QR (Permission)",
     "subtitle": "Authorize signing this document via your Cas ID app.",
     "instruction": "Ask the signer to scan this QR code with the Cas ID app and approve the signing request.",
@@ -173,7 +187,7 @@
     "linkLabel": "link:",
     "copyLink": "Copy link",
     "copied": "Copied!",
-    "tip": "Open Cas ID to scan the QR for signing permission, or tap the notification sent to your Cas ID app.",
+    "tip": "Open Cas ID to scan the QR for signing permission, or tap the notification sent to your Cas ID app. No CAS ID yet? Watch the registration video below.",
     "aria": { "qrCode": "QR code" }
   },
   "sign": {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslation } from 'react-i18next';
+import { Reveal } from '../Reveal';
 import {
   CAS_ID_REGISTER_URL,
   SIGNING_METHODS,
@@ -12,12 +13,19 @@ import {
  * and, under each, the signature providers (CAs) behind it. Data lives in
  * lib/branding/signingMethods.ts; only CAS ID is usable on KysoQR today.
  */
+/** Anchor id, used by the landing page's ScrollCue. */
+export const SIGNING_METHODS_SECTION_ID = 'signing-methods';
+
 export function SigningMethodsSection() {
   const { t } = useTranslation();
 
   return (
-    <section aria-labelledby="signing-methods-title" className="bg-white">
-      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-12 sm:px-6 sm:py-16">
+    <section
+      id={SIGNING_METHODS_SECTION_ID}
+      aria-labelledby="signing-methods-title"
+      className="scroll-mt-6 bg-white"
+    >
+      <Reveal className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-12 sm:px-6 sm:py-16">
         <div className="flex max-w-2xl flex-col gap-2.5">
           <div className="flex items-center gap-2 text-[13px] font-semibold text-primary-strong">
             {/* eslint-disable-next-line @next/next/no-img-element -- small static logo image, no optimization needed */}
@@ -40,7 +48,7 @@ export function SigningMethodsSection() {
             <MethodCard key={method.key} method={method} />
           ))}
         </div>
-      </div>
+      </Reveal>
     </section>
   );
 }

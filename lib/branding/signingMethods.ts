@@ -30,6 +30,15 @@ export const CASSO_HOMEPAGE_URL = 'https://casso.vn/';
 /** Free CAS ID digital-signature registration guide, linked from the CAS ID card. */
 export const CAS_ID_REGISTER_URL = 'https://cas.so/cas-id/chu-ky-so/';
 
+/**
+ * "Hướng dẫn đăng ký chứng thư số Cas Cert trên App Cas ID" on YouTube
+ * (https://youtu.be/OLVWXfumxoM), embedded in step 2 of the signing wizard.
+ * Uses the privacy-enhanced youtube-nocookie.com host; `rel=0` keeps the
+ * end-screen suggestions to the same channel.
+ */
+export const CAS_ID_GUIDE_VIDEO_EMBED_URL =
+  'https://www.youtube-nocookie.com/embed/OLVWXfumxoM?rel=0';
+
 export const SIGNING_METHODS: SigningMethod[] = [
   {
     key: 'casid',
