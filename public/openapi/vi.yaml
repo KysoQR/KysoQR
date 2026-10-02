@@ -384,7 +384,7 @@ paths:
         xác minh được PDF ký bởi bất kỳ hệ thống nào.
 
         - File không có chữ ký → `{ "signatures": [] }`.
-        - Chỉ xác minh **tối đa 10 chữ ký** đầu tiên; phần dư bị bỏ qua, không báo lỗi.
+        - Xác minh **mọi chữ ký** trong file, không giới hạn số lượng (server chạy tối đa 4 chữ ký cùng lúc).
         - Trường tuỳ chọn **vắng mặt** (không phải `null`) khi không áp dụng.
 
         ### Loại chữ ký hỗ trợ
@@ -457,6 +457,7 @@ paths:
                             crl: null
                         certificateExpiredNow: false
                         contentIntact: true
+                        position: 1
                 unsigned:
                   summary: File không có chữ ký
                   value: { signatures: [] }
@@ -467,6 +468,7 @@ paths:
                       - status: CONTENT_DIGEST_MISMATCH
                         message: The PDF content does not match what was actually signed.
                         contentIntact: false
+                        position: 1
         '400':
           description: File không hợp lệ.
           content:
@@ -742,7 +744,7 @@ components:
       properties:
         signatures:
           type: array
-          description: Mỗi phần tử ứng với 1 chữ ký, theo thứ tự trong file. Tối đa 10 phần tử.
+          description: Mỗi phần tử ứng với 1 chữ ký, theo thứ tự trong file (cũ trước).
           items:
             $ref: '#/components/schemas/VerificationResult'
 
@@ -786,6 +788,10 @@ components:
         contentIntact:
           type: boolean
           description: '`true`: nội dung chưa bị sửa sau khi ký. `false`: đã bị sửa.'
+        position:
+          type: integer
+          minimum: 1
+          description: Số thứ tự của chữ ký này trong file (chữ ký cũ nhất = 1).
 
     VerificationCertificate:
       type: object

@@ -384,7 +384,7 @@ paths:
         and verifies PDFs signed by any system.
 
         - A file with no signatures → `{ "signatures": [] }`.
-        - Only the **first 10 signatures** are verified; the rest are skipped silently.
+        - **Every signature** in the file is verified, with no limit on how many (the server verifies at most 4 at a time).
         - Optional fields are **absent** (not `null`) when they don't apply.
 
         ### Supported signatures
@@ -457,6 +457,7 @@ paths:
                             crl: null
                         certificateExpiredNow: false
                         contentIntact: true
+                        position: 1
                 unsigned:
                   summary: No signatures in the file
                   value: { signatures: [] }
@@ -467,6 +468,7 @@ paths:
                       - status: CONTENT_DIGEST_MISMATCH
                         message: The PDF content does not match what was actually signed.
                         contentIntact: false
+                        position: 1
         '400':
           description: Invalid file.
           content:
@@ -742,7 +744,7 @@ components:
       properties:
         signatures:
           type: array
-          description: One item per signature, in document order. At most 10 items.
+          description: One item per signature, in document order (oldest first).
           items:
             $ref: '#/components/schemas/VerificationResult'
 
@@ -786,6 +788,10 @@ components:
         contentIntact:
           type: boolean
           description: '`true`: content unchanged since signing. `false`: content was modified.'
+        position:
+          type: integer
+          minimum: 1
+          description: Position of this signature in the file (oldest = 1).
 
     VerificationCertificate:
       type: object

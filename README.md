@@ -4,7 +4,7 @@
 
 PDF e-signing via QR code (CAS e-signing) and digital signature verification — open source, **a single, fully stateless Next.js application**.
 
-**Try it live:** [xsign-outsource.duy-nguyen1010fight.workers.dev](https://xsign-outsource.duy-nguyen1010fight.workers.dev/) — no need to clone/install anything just to see how it works.
+**Try it live:** [kysoqr.com](https://kysoqr.com/) — no need to clone/install anything just to see how it works.
 
 ## What is KysoQR Opensource?
 

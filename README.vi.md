@@ -4,7 +4,7 @@
 
 Ký số tài liệu PDF qua mã QR (CAS e-signing) và xác minh chữ ký số điện tử — mã nguồn mở, **một ứng dụng Next.js duy nhất, hoàn toàn stateless**.
 
-**Dùng thử ngay:** [xsign-outsource.duy-nguyen1010fight.workers.dev](https://xsign-outsource.duy-nguyen1010fight.workers.dev/) — không cần clone/cài đặt gì để xem thử trước.
+**Dùng thử ngay:** [kysoqr.com](https://kysoqr.com/) — không cần clone/cài đặt gì để xem thử trước.
 
 ## KysoQR Opensource là gì?
 

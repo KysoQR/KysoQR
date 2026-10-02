@@ -2,7 +2,11 @@ import { MAX_UPLOAD_SIZE_MB } from '@/components/signing/constants';
 import { isValidPdfUpload } from '@/lib/pdfValidation';
 import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
 import { getTrustStore } from '@/lib/trustStore/getTrustStore';
-import { verifyPdfSignatures } from '@/lib/verification/verifyPdfSignatures';
+import { sanitizeLogText } from '@/lib/cas/CasEsignProvider';
+import {
+  type DetailedVerificationResult,
+  verifyPdfSignaturesDetailed,
+} from '@/lib/verification/verifyPdfSignatures';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +14,21 @@ const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024;
 
 function badRequest(code: string, message: string): Response {
   return Response.json({ error: code, message }, { status: 400 });
+}
+
+/** One server-log line per signature that is not SIGNED_VALID, with the
+ * technical reason (`detail`) the client never sees. Signer names are left
+ * out on purpose; the certificate serial is enough to identify the cert. */
+function logVerificationProblems(entries: DetailedVerificationResult[], fileLength: number): void {
+  for (const { result, detail } of entries) {
+    if (result.status === 'SIGNED_VALID') continue;
+    console.warn(`[verify:upload] signature #${result.position ?? '?'} -> ${result.status}`, {
+      message: result.message,
+      signedAt: result.signedAt,
+      fileLength,
+      ...detail,
+    });
+  }
 }
 
 /**
@@ -57,12 +76,17 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const signatures = await verifyPdfSignatures(buffer, getTrustStore());
-    return Response.json({ signatures });
-  } catch {
+    const detailed = await verifyPdfSignaturesDetailed(buffer, getTrustStore());
+    logVerificationProblems(detailed, buffer.length);
+    return Response.json({ signatures: detailed.map((entry) => entry.result) });
+  } catch (error) {
     // Fail closed: an unexpected error verifying an untrusted upload must
     // never be reported as "no signatures found" (which the UI treats as
     // silent/no-op) -- surface it as a hard failure instead.
+    console.error(
+      '[verify:upload] verification crashed:',
+      sanitizeLogText(error instanceof Error ? (error.stack ?? error.message) : String(error))
+    );
     return Response.json(
       { error: 'VERIFICATION_FAILED', message: 'Failed to verify the uploaded PDF' },
       { status: 500 }

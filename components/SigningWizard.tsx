@@ -93,6 +93,16 @@ const TERMINAL_STATUSES = new Set(['SIGNED', 'REJECTED', 'FAILED', 'EXPIRED']);
 /** Terminal means "nothing left to resume" — clear immediately so a reload
  * (or just staying on the page) can start a fresh signing session right
  * away, per explicit product requirement. */
+/** DevTools-console summary of every signature that did not verify as
+ * SIGNED_VALID (the technical detail is in the server log). `console.warn`,
+ * not `console.error`, so it never triggers Next's dev error overlay. */
+function logSignatureProblems(signatures: VerificationResult[]) {
+  for (const sig of signatures) {
+    if (sig.status === 'SIGNED_VALID') continue;
+    console.warn(`[verify] signature #${sig.position ?? '?'}: ${sig.status} -- ${sig.message}`, sig);
+  }
+}
+
 function clearPersistedSession() {
   for (const key of Object.values(LS_KEYS)) window.localStorage.removeItem(key);
 }
@@ -480,12 +490,18 @@ export function SigningWizard({
         const form = new FormData();
         form.append('file', file);
         const res = await fetch('/api/verify/upload', { method: 'POST', body: form });
-        if (!res.ok || cancelled) return;
+        if (cancelled) return;
+        if (!res.ok) {
+          // Still silent on screen, but visible in DevTools for debugging.
+          console.warn('[verify] verification request failed', res.status, await parseJsonSafely(res).catch(() => null));
+          return;
+        }
         const data = await parseJsonSafely(res);
         if (cancelled) return;
         const signatures: VerificationResult[] = Array.isArray(data.signatures)
           ? data.signatures
           : [];
+        logSignatureProblems(signatures);
         // Auto-opens by default the moment existing signatures are found
         // (product decision: surface them immediately, not just via the
         // toggle button). The earlier "opens then immediately closes"
@@ -499,8 +515,10 @@ export function SigningWizard({
         // column's height. Both are fixed at the source now.
         setExistingSignatures(signatures);
         if (signatures.length > 0) setSignatureSidebarOpen(true);
-      } catch {
-        // Silent by design — a courtesy detection, never surfaced as an error.
+      } catch (error) {
+        // Silent on screen by design — a courtesy detection, never surfaced
+        // as an error — but logged for debugging.
+        console.warn('[verify] verification request failed', error);
       } finally {
         if (!cancelled) setCheckingSignatures(false);
       }
@@ -529,8 +547,7 @@ export function SigningWizard({
     setSignerConfigJustRevealed(false);
   };
 
-  const showSignatureHistoryColumn = signatureSidebarOpen && existingSignatures.length > 0;
-  // The whole left column (dropzone + file info + signer config) is only
+  const showSignatureHistoryColumn = signatureSidebarOpen && existingSignatures.length > 0;  // The whole left column (dropzone + file info + signer config) is only
   // shown while at least one signature field exists, so a user with no
   // field yet sees just the PDF and the "Chọn vị trí ký" action. Always
   // shown without a file (e.g. resumed session after reload, then "Quay lại
