@@ -37,6 +37,8 @@ import type { SigningRoundDetail } from '@/lib/cas/CasProvider';
 import type { VerificationResult } from '@/lib/verification/verifyPdfSignatures';
 import { CAS_ID_VIDEO_GUIDE_ID, CasIdVideoGuide } from './signing/CasIdVideoGuide';
 import { ScrollCue } from './ScrollCue';
+import { CassoBrandBand } from './home/CassoBrandBand';
+import Footer from './Footer';
 
 /**
  * Signing wizard — UI/UX ported from x-sign-web (IntentSigningPage +
@@ -1606,6 +1608,16 @@ export function SigningWizard({
           )}
         </div>
       </main>
+
+      {/* Same full-width Casso band + footer as the landing page, on the
+          scan and done steps. Not on "upload": that step is a PDF workspace
+          whose sticky columns are sized to the viewport. */}
+      {step !== 'upload' && (
+        <div className="bg-white">
+          <CassoBrandBand />
+          <Footer />
+        </div>
+      )}
 
       {showDownloadReminder && (
         <DownloadReminderModal
