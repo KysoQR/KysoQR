@@ -8,7 +8,7 @@
 |---|---|---|
 | `casso-logo.svg`, `casso-symbol.svg` | Casso Design System v1.0.0 Beta (`assets/logo/`) | Logo chính thức của Casso |
 | `cas-id.png` | Chủ dự án cung cấp | Wordmark CAS ID |
-| `usb-token.svg` | Tự vẽ | Tạm thời, chờ file icon USB Token từ Vecteezy (bị chặn tải tự động) |
+| `usb-token.png` | Chủ dự án cung cấp | Cắt viền, 192×192 |
 | `vneid.svg` | https://vneid.gov.vn (`app-icon`) | Ảnh tạm |
 | `providers/intrustca.png` | https://cdn.bankhub.vn/img/intrust-cert-logo.png | Chủ dự án cung cấp link, thu nhỏ còn 480px |
 | `providers/cascert-cmc.png` | https://cdn.bankhub.vn/img/cas-cert-logo.png | Chủ dự án cung cấp link ("CAS CERT by CMC CA") |

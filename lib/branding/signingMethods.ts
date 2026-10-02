@@ -25,7 +25,10 @@ export interface SigningMethod {
   providers: SignatureProvider[];
 }
 
-export const CASSO_HOMEPAGE_URL = 'https://cas.so';
+export const CASSO_HOMEPAGE_URL = 'https://casso.vn/';
+
+/** Free CAS ID digital-signature registration guide, linked from the CAS ID card. */
+export const CAS_ID_REGISTER_URL = 'https://cas.so/cas-id/chu-ky-so/';
 
 export const SIGNING_METHODS: SigningMethod[] = [
   {
@@ -50,7 +53,7 @@ export const SIGNING_METHODS: SigningMethod[] = [
   },
   {
     key: 'usbtoken',
-    logo: '/brand/usb-token.svg',
+    logo: '/brand/usb-token.png',
     available: false,
     providers: [
       { name: 'Viettel-CA', logo: '/brand/providers/viettel.svg', caption: 'Viettel-CA' },

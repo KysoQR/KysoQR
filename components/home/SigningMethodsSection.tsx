@@ -1,14 +1,18 @@
 'use client';
 
 import { useTranslation } from 'react-i18next';
-import { SIGNING_METHODS, type SigningMethod } from '@/lib/branding/signingMethods';
+import {
+  CAS_ID_REGISTER_URL,
+  SIGNING_METHODS,
+  type SigningMethod,
+} from '@/lib/branding/signingMethods';
 
 /**
  * Landing-page section listing the signing methods in the Casso ecosystem
  * and, under each, the signature providers (CAs) behind it. Data lives in
  * lib/branding/signingMethods.ts; only CAS ID is usable on KysoQR today.
  */
-export function SigningMethodsSection({ onStartSigning }: { onStartSigning: () => void }) {
+export function SigningMethodsSection() {
   const { t } = useTranslation();
 
   return (
@@ -33,7 +37,7 @@ export function SigningMethodsSection({ onStartSigning }: { onStartSigning: () =
 
         <div className="grid gap-5 md:grid-cols-3">
           {SIGNING_METHODS.map((method) => (
-            <MethodCard key={method.key} method={method} onStartSigning={onStartSigning} />
+            <MethodCard key={method.key} method={method} />
           ))}
         </div>
       </div>
@@ -41,13 +45,7 @@ export function SigningMethodsSection({ onStartSigning }: { onStartSigning: () =
   );
 }
 
-function MethodCard({
-  method,
-  onStartSigning,
-}: {
-  method: SigningMethod;
-  onStartSigning: () => void;
-}) {
+function MethodCard({ method }: { method: SigningMethod }) {
   const { t } = useTranslation();
   const base = `home.branding.methods.${method.key}`;
 
@@ -117,13 +115,14 @@ function MethodCard({
       </div>
 
       {method.available && (
-        <button
-          type="button"
-          onClick={onStartSigning}
+        <a
+          href={CAS_ID_REGISTER_URL}
+          target="_blank"
+          rel="noopener noreferrer"
           className="mt-auto inline-flex min-h-11 items-center self-start rounded-full bg-primary px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-strong"
         >
-          {t('home.branding.startSigning')}
-        </button>
+          {t('home.branding.registerFree')}
+        </a>
       )}
     </article>
   );

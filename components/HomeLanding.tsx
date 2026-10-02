@@ -51,7 +51,6 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
   const signCardRef = useRef<HTMLDivElement>(null);
-  const uploadButtonRef = useRef<HTMLButtonElement>(null);
 
   const [intent, setIntent] = useState<Intent>('sign');
   const [codeInput, setCodeInput] = useState('');
@@ -99,14 +98,6 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
   // visible -- so this only changes which one looks selected.
   const handleIntentChange = (next: Intent) => {
     setIntent(next);
-  };
-
-  // "Ký tài liệu ngay" in the signing-methods section below: bring the
-  // sign card back into view and put focus on its upload button.
-  const handleStartSigning = () => {
-    setIntent('sign');
-    signCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    uploadButtonRef.current?.focus({ preventScroll: true });
   };
 
   const handleCodeSubmit = async (rawCode: string) => {
@@ -311,7 +302,6 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
 
               <label htmlFor="home-file-input" className="mt-1">
                 <button
-                  ref={uploadButtonRef}
                   type="button"
                   disabled={validating}
                   onClick={() => document.getElementById('home-file-input')?.click()}
@@ -394,7 +384,7 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
         </div>
       </main>
 
-      <SigningMethodsSection onStartSigning={handleStartSigning} />
+      <SigningMethodsSection />
       <CassoBrandBand />
 
       {/* The lookup FORM stays inline (always visible, see the comment
