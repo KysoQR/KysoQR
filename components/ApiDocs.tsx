@@ -29,7 +29,7 @@ const HIDDEN_CLIENT_TARGETS = [
 ] as const;
 
 /** Maps Scalar's accent/font onto the app's own design tokens (app/globals.css).
- * `--scalar-custom-header-height` = the app Header's `h-16` (64px), so
+ * `--scalar-custom-header-height` = the app Header's height (72px), so
  * Scalar's own sticky sidebar sits below our sticky header instead of under it. */
 const SCALAR_CSS = `
   .light-mode {
@@ -37,12 +37,12 @@ const SCALAR_CSS = `
     --scalar-font: 'Be Vietnam Pro', sans-serif;
   }
   :root {
-    --scalar-custom-header-height: 64px;
+    --scalar-custom-header-height: 72px;
   }
 `;
 
 /**
- * `/docs` — interactive API reference rendered from `public/openapi/{vi,en}.yaml`
+ * `/api` — interactive API reference rendered from `public/openapi/{vi,en}.yaml`
  * (the specs themselves are the source of truth; `lib/openapi.test.ts` keeps
  * them in sync with `app/api/**`). Follows the app's VI/EN switch; `?lang=en`
  * picks English on a direct link, since the app doesn't persist the language.
@@ -59,7 +59,7 @@ export function ApiDocs() {
   return (
     <div className="flex min-h-screen flex-col bg-white text-text-main">
       <div className="sticky top-0 z-40">
-        <Header maxWidthClassName="max-w-[1440px]" />
+        <Header />
       </div>
       <main className="flex-1">
         <ApiReferenceReact

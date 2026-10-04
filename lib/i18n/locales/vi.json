@@ -79,9 +79,14 @@
     }
   },
   "nav": {
-    "docs": "Tài liệu",
-    "api": "API",
-    "letter": "CEO Letter",
+    "whyKicker": "Vì sao",
+    "whyLabel": "Ký số QR",
+    "openSourceKicker": "Ký số",
+    "openSourceLabel": "Mã nguồn mở",
+    "apiKicker": "API",
+    "apiLabel": "Ký hàng loạt",
+    "verifyKicker": "Xác minh",
+    "verifyLabel": "Tài liệu ký",
     "comingSoon": "Sắp có"
   },
   "footer": {

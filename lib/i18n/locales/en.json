@@ -80,9 +80,14 @@
     }
   },
   "nav": {
-    "docs": "Docs",
-    "api": "API",
-    "letter": "CEO Letter",
+    "whyKicker": "Why",
+    "whyLabel": "QR signing",
+    "openSourceKicker": "Signing",
+    "openSourceLabel": "Open source",
+    "apiKicker": "API",
+    "apiLabel": "Bulk signing",
+    "verifyKicker": "Verify",
+    "verifyLabel": "Signed documents",
     "comingSoon": "Coming soon"
   },
   "footer": {

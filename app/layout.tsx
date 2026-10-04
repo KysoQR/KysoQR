@@ -12,8 +12,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="vi" suppressHydrationWarning>
       <body>
-        {/* `null` when there is no tamthu.md -- then the header simply has
-            no "Tâm thư" button; nothing else depends on it. */}
+        {/* `null` when there is no tamthu.md -- "Vì sao / Ký số QR" then
+            does not open a letter; nothing else depends on it. */}
         <TamThuProvider html={readTamThuHtml()}>{children}</TamThuProvider>
       </body>
     </html>
