@@ -6,19 +6,25 @@ import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from './LanguageSwitcher';
 import { GithubStarsButton } from './GithubStarsButton';
-import { TamThuPopup, useTamThuHtml } from './TamThu';
+import { useWhyMenu } from './WhyMenu';
 
 /** Two-line items, same stacking as the Cas ID header: a short kicker on top,
- * the name in bold underneath. `href: null` opens the CEO letter popup
- * (`tamthu.md`) instead of navigating. `/` matches no item. */
+ * the name in bold underneath. "Vì sao / Ký số QR" is omitted unless the
+ * server has `public/why.html`. `/` matches no item. */
 const NAV_ITEMS: {
   key: string;
-  href: string | null;
+  href: string;
   matchPath: string | null;
   kickerKey: string;
   labelKey: string;
 }[] = [
-  { key: 'why', href: null, matchPath: null, kickerKey: 'nav.whyKicker', labelKey: 'nav.whyLabel' },
+  {
+    key: 'why',
+    href: '/why.html',
+    matchPath: null,
+    kickerKey: 'nav.whyKicker',
+    labelKey: 'nav.whyLabel',
+  },
   {
     key: 'opensource',
     href: '/opensource',
@@ -97,14 +103,8 @@ export default function Header({
   const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const pathname = usePathname();
-  /** `null` = no tamthu.md -> the "Vì sao / Ký số QR" item stays visible but
-   * does not open a letter. */
-  const tamThuHtml = useTamThuHtml();
-  const [isTamThuOpen, setIsTamThuOpen] = useState(false);
-
-  const openLetter = () => {
-    if (tamThuHtml) setIsTamThuOpen(true);
-  };
+  const showWhy = useWhyMenu();
+  const navItems = NAV_ITEMS.filter((item) => item.key !== 'why' || showWhy);
 
   return (
     <>
@@ -127,7 +127,7 @@ export default function Header({
           <div className="hidden items-center justify-center gap-4 lg:flex">
             {centerContent}
             <nav className="flex items-center gap-1 xl:gap-2" aria-label="Primary">
-              {NAV_ITEMS.map((item) => {
+              {navItems.map((item) => {
                 const lines = (
                   <NavLines kicker={t(item.kickerKey)} label={t(item.labelKey)} align="center" />
                 );
@@ -135,11 +135,11 @@ export default function Header({
                 const itemClass = `rounded-lg px-2 py-1.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 hover:bg-surface-soft ${
                   active ? 'bg-surface-soft' : ''
                 }`;
-                if (!item.href) {
+                if (item.key === 'why') {
                   return (
-                    <button key={item.key} type="button" onClick={openLetter} className={itemClass}>
+                    <a key={item.key} href={item.href} className={itemClass}>
                       {lines}
-                    </button>
+                    </a>
                   );
                 }
                 return (
@@ -156,17 +156,18 @@ export default function Header({
             </nav>
           </div>
           <div className="ml-auto flex shrink-0 items-center justify-end gap-1 lg:ml-0 lg:justify-self-end lg:gap-6">
-            <button
-              type="button"
-              onClick={openLetter}
-              className="rounded-lg px-1.5 py-1 outline-none transition-colors hover:bg-surface-soft focus-visible:ring-2 focus-visible:ring-primary/40 lg:hidden"
-            >
-              <NavLines
-                kicker={t('nav.whyKicker')}
-                label={t('nav.whyLabel')}
-                align="center"
-              />
-            </button>
+            {showWhy && (
+              <a
+                href="/why.html"
+                className="rounded-lg px-1.5 py-1 outline-none transition-colors hover:bg-surface-soft focus-visible:ring-2 focus-visible:ring-primary/40 lg:hidden"
+              >
+                <NavLines
+                  kicker={t('nav.whyKicker')}
+                  label={t('nav.whyLabel')}
+                  align="center"
+                />
+              </a>
+            )}
             <div className="flex items-center gap-3.5">
               <span className="hidden lg:inline-flex">
                 <GithubStarsButton />
@@ -218,7 +219,7 @@ export default function Header({
                 </button>
               </div>
               <nav className="flex flex-col gap-1 px-4 py-4">
-                {NAV_ITEMS.map((item) => {
+                {navItems.map((item) => {
                   const lines = (
                     <NavLines kicker={t(item.kickerKey)} label={t(item.labelKey)} align="start" />
                   );
@@ -226,19 +227,11 @@ export default function Header({
                   const itemClass = `rounded-lg px-3 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 hover:bg-surface-soft ${
                     active ? 'bg-surface-soft' : ''
                   }`;
-                  if (!item.href) {
+                  if (item.key === 'why') {
                     return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => {
-                          setIsMenuOpen(false);
-                          openLetter();
-                        }}
-                        className={itemClass}
-                      >
+                      <a key={item.key} href={item.href} className={itemClass}>
                         {lines}
-                      </button>
+                      </a>
                     );
                   }
                   return (
@@ -258,11 +251,6 @@ export default function Header({
         </>
       )}
 
-      {/* Rendered here, not inside the mobile menu, so closing the menu on
-          click doesn't unmount the popup it just opened. */}
-      {tamThuHtml && isTamThuOpen && (
-        <TamThuPopup html={tamThuHtml} onClose={() => setIsTamThuOpen(false)} />
-      )}
     </>
   );
 }
