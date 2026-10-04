@@ -181,4 +181,4 @@ CAS_ESIGN_CLIENT_ID=trial-vendor-47de-86e8-7342f311028c
 CAS_ESIGN_API_KEY=a0e6d612-b34e-11f1-a10d-02cf4c5ff398
 ```
 
-Note: these are shared **trial** keys meant for trying the app out right away. If you want to sign real documents daily or ship this as part of a production product, go to https://cas.so/ or call +84 961 580 977 to get your own key.
+Note: these are shared **trial** keys meant for trying the app out right away. If you want to sign real documents daily or ship this as part of a production product, go to https://cas.so/ to get your own key.

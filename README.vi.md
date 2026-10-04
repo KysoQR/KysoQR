@@ -169,4 +169,4 @@ CAS_ESIGN_CLIENT_ID=trial-vendor-47de-86e8-7342f311028c
 CAS_ESIGN_API_KEY=a0e6d612-b34e-11f1-a10d-02cf4c5ff398
 ```
 
-Lưu ý: đây là các key **trial** dùng chung để bạn dùng thử ngay. Nếu muốn sử dụng để ký thật hằng ngày hoặc đóng gói thành sản phẩm production, cần truy cập trang https://cas.so/ hoặc liên hệ sđt 0961580977 để được cấp key riêng.
+Lưu ý: đây là các key **trial** dùng chung để bạn dùng thử ngay. Nếu muốn sử dụng để ký thật hằng ngày hoặc đóng gói thành sản phẩm production, cần truy cập trang https://cas.so/ để được cấp key riêng.
