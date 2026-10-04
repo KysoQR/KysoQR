@@ -1,0 +1,45 @@
+# Push lên main: kiểm tra, build Worker, rồi deploy.
+# CLOUDFLARE_API_TOKEN và CLOUDFLARE_ACCOUNT_ID nằm ở
+# Settings → CI/CD → Variables (masked). Không commit secret vào repo.
+#
+# `wrangler versions upload` chỉ tạo version, Cloudflare Builds mới tự đưa
+# version đó lên production. Ở GitLab phải gọi deploy thì Worker mới chạy.
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+stages:
+  - verify
+  - deploy
+
+default:
+  image: node:22
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - node_modules/
+
+variables:
+  NODE_OPTIONS: "--max-old-space-size=4096"
+
+verify:
+  stage: verify
+  script:
+    - npm ci
+    - npm test
+    - npm run typecheck
+
+deploy:
+  stage: deploy
+  needs: ["verify"]
+  environment:
+    name: production
+  script:
+    - npm ci
+    - npm run cf:build
+    - npx opennextjs-cloudflare deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
