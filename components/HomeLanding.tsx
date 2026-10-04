@@ -99,36 +99,15 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
       <Header />
 
       <main className="flex-1 bg-[#F5FBF7]">
-        <div className="mx-auto grid max-w-6xl gap-8 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[1fr_560px] lg:items-start lg:gap-14">
-          {/* Left: pitch + how it works */}
-          <div>
+        <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-8 sm:px-6 sm:py-10">
+          <section className="max-w-3xl">
             <div className="font-mono text-xs font-semibold uppercase tracking-widest text-primary-strong">
               {t('home.eyebrow')}
             </div>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-text-strong sm:text-5xl">
               {t('home.title')}
             </h1>
-            <p className="mt-4 max-w-xl text-base leading-relaxed text-text-secondary">
-              {t('home.subtitle')}
-            </p>
-
-            <div className="mt-5 border-t border-border-subtle">
-              {HOME_STEP_KEYS.map((key, index) => (
-                <div key={key} className="flex gap-4 border-b border-border-subtle py-2.5">
-                  <span className="pt-0.5 font-mono text-xs text-primary-strong">
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
-                  <div>
-                    <div className="text-sm font-semibold text-text-strong">
-                      {t(`home.steps.${key}.title`)}
-                    </div>
-                    <div className="mt-1 text-[13.5px] text-text-secondary">
-                      {t(`home.steps.${key}.description`)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <p className="mt-4 text-base leading-relaxed text-text-secondary">{t('home.subtitle')}</p>
 
             <div className="mt-4 flex flex-wrap gap-2.5">
               {HOME_TAG_KEYS.map((key) => (
@@ -183,7 +162,27 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
                 )}
               </div>
             )}
-          </div>
+          </section>
+
+          <ol className="relative grid gap-6 md:grid-cols-3">
+            <span
+              aria-hidden="true"
+              className="absolute left-[14px] right-[calc(33.333%-14px)] top-[13px] hidden h-px bg-border-subtle md:block"
+            />
+            {HOME_STEP_KEYS.map((key, index) => (
+              <li key={key} className="relative md:pr-8 md:last:pr-0">
+                <div className="relative z-10 flex h-7 w-7 items-center justify-center rounded-full bg-[#F5FBF7] font-mono text-xs text-primary-strong ring-1 ring-primary/40">
+                  {String(index + 1).padStart(2, '0')}
+                </div>
+                <div className="mt-3 text-sm font-semibold text-text-strong">
+                  {t(`home.steps.${key}.title`)}
+                </div>
+                <p className="mt-1 text-[13.5px] leading-relaxed text-text-secondary">
+                  {t(`home.steps.${key}.description`)}
+                </p>
+              </li>
+            ))}
+          </ol>
 
           <div
             ref={signCardRef}
