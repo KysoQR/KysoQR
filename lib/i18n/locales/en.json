@@ -28,7 +28,7 @@
       "hr": "HR records"
     },
     "signCard": {
-      "title": "Sign or verify a signature now, no login needed",
+      "title": "Sign a document now, no login needed",
       "badge": "1 file / session",
       "dropzoneTitle": "Drop your PDF here",
       "dropzoneSubtitle": "or choose a file from your device to start signing"
@@ -37,8 +37,12 @@
     "githubStars_one": "{{count}} star",
     "githubStars_other": "{{count}} stars",
     "supportedSignatures": {
-      "sign": { "summary": "Sign with a remote digital signature in the Cas ID app" },
-      "verify": { "summary": "Verifies USB token, HSM / remote, and SIM PKI signatures" }
+      "sign": {
+        "summary": "Sign with a remote digital signature in the Cas ID app"
+      },
+      "verify": {
+        "summary": "Verifies USB token, HSM / remote, and SIM PKI signatures"
+      }
     },
     "intent": {
       "sign": "Sign a document",
@@ -90,6 +94,53 @@
     "verifyLabel": "Signed documents",
     "comingSoon": "Coming soon"
   },
+  "verifyPage": {
+    "title": "Verify a signed document",
+    "lead": "Two ways to check a signed file: look up a QR-signing session with the code printed on the document, or upload the PDF to check the signature against the certificate chain up to the national Root CA.",
+    "session": {
+      "kicker": "QR signing",
+      "description": "For documents signed with QR signing. Enter the signing-round code printed on the file to see who signed, when, and on which device."
+    },
+    "chain": {
+      "kicker": "Certificate chain",
+      "title": "Verify against the national Root CA",
+      "description": "For any PDF signed with a valid digital certificate, including USB tokens, HSMs, and SIM PKI. Upload the file to check the signature and trace the certificate chain back to Vietnam's Root CA.",
+      "dropzoneTitle": "Drop a signed PDF here",
+      "dropzoneSubtitle": "or choose a file from your device to verify"
+    },
+    "explain": {
+      "eyebrow": "How a digital signature is checked",
+      "title": "Trace the certificate chain back to the national Root CA",
+      "intro": "A digital signature on a PDF is not a picture of a signature. It is the signer's digital certificate, bound to the file contents by cryptography. To decide whether that signature is trustworthy, the system traces the certificate chain back to a root the state recognizes.",
+      "steps": {
+        "read": {
+          "title": "Read the signature inside the PDF",
+          "description": "A signed file contains one or more digital signatures. Each one names the byte range that was signed, together with the signer's certificate."
+        },
+        "signature": {
+          "title": "Check the signature against the signer's key",
+          "description": "The signature is checked with the public key on the signer's certificate. If it does not match, the signature is invalid, even if a signature image is still visible on the page."
+        },
+        "content": {
+          "title": "Check that the content is intact",
+          "description": "The system compares the signed byte range with the value that was signed. If the file was changed after signing, the result is that the content was modified."
+        },
+        "chain": {
+          "title": "Trace the certificate chain back",
+          "description": "The signer's certificate was issued by a certification authority (CA). That CA may itself have been issued by a higher CA. The chain runs from the signer, through intermediate CAs, to a root certificate."
+        },
+        "root": {
+          "title": "Match the national Root CA",
+          "description": "The chain is trusted only when the root is a Vietnam Root CA published by NEAC at rootca.gov.vn (Ministry of Information and Communications). KysoQR uses the SHA-256 generation G2 and G3 roots. A matching provider name is not enough: each link must be signed by the certificate above it, with that certificate's own key."
+        },
+        "time": {
+          "title": "Judge it at signing time",
+          "description": "The result is judged at the time of signing, not at the moment you open this page. A certificate that expires after the signing date does not make that signature fake."
+        }
+      },
+      "note": "Looking up a signing round is a different check: it asks KysoQR about that QR-signing session. Tracing the certificate chain back applies to any PDF signed with a digital certificate, and does not need a session code."
+    }
+  },
   "footer": {
     "title1": "Internationally standard security",
     "title2": "Fast signing in seconds",
@@ -139,7 +190,10 @@
   },
   "signerConfig": {
     "signerKindLabel": "Who is signing?",
-    "signerKind": { "individual": "Individual", "enterprise": "Business" },
+    "signerKind": {
+      "individual": "Individual",
+      "enterprise": "Business"
+    },
     "cccdLabel": "Citizen ID (CCCD)",
     "optionalNotice": "Enter details to send the signing request to Cas ID.",
     "enterpriseTaxCodeRequired": "A tax code (MST) is required to sign as an enterprise.",
@@ -194,7 +248,9 @@
     "copyLink": "Copy link",
     "copied": "Copied!",
     "tip": "Open Cas ID to scan the QR for signing permission, or tap the notification sent to your Cas ID app. No CAS ID yet? Watch the registration video below.",
-    "aria": { "qrCode": "QR code" }
+    "aria": {
+      "qrCode": "QR code"
+    }
   },
   "sign": {
     "needUploadForPreview": "Upload a PDF to preview and place the signature.",
@@ -343,7 +399,8 @@
   "signatureHistory": {
     "title": "Signature history",
     "subtitle_one": "This document already has {{count}} existing digital signature.",
-    "subtitle_other": "This document already has {{count}} existing digital signatures.",    "closeAriaLabel": "Close signature history",
+    "subtitle_other": "This document already has {{count}} existing digital signatures.",
+    "closeAriaLabel": "Close signature history",
     "chain": {
       "title": "Certificate chain",
       "ca": "Issuing CA",

@@ -1,10 +1,15 @@
 import type { Metadata } from 'next';
-import { PlaceholderPage } from '@/components/PlaceholderPage';
+import { Suspense } from 'react';
+import { VerifyDocumentPage } from '@/components/VerifyDocumentPage';
 
 export const metadata: Metadata = {
   title: 'Xác minh tài liệu ký — KysoQR',
 };
 
 export default function VerifyPage() {
-  return <PlaceholderPage titleKey="nav.verifyLabel" />;
+  return (
+    <Suspense>
+      <VerifyDocumentPage />
+    </Suspense>
+  );
 }
