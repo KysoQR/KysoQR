@@ -140,6 +140,47 @@
       "note": "Tra cứu phiên ký là việc khác: nó hỏi lại đúng phiên Ký số QR trên KysoQR. Cách tra ngược chuỗi chứng thư ở trên áp dụng cho mọi PDF ký bằng chứng thư số, không cần mã phiên."
     }
   },
+  "openSourcePage": {
+    "title": "Ký số mã nguồn mở",
+    "lead": "Tự chạy KysoQR trên máy tính, server của bạn hoặc cloudflare, ký một tài liệu bằng Cas ID, rồi đổi sang key riêng khi đưa vào dùng thật.",
+    "tocLabel": "Mục lục",
+    "toc": {
+      "quick": "Bắt đầu nhanh",
+      "local": "Chạy local",
+      "pm2": "Deploy dùng pm2",
+      "worker": "Deploy trên Cloudflare Worker",
+      "sign": "Thực hiện ký",
+      "production": "Triển khai thực tế",
+      "vendor": "Đăng ký thành Vendor của Cas",
+      "app": "Tạo App và cập nhật thông số env"
+    },
+    "quickBody": "KysoQR.com là một giải pháp ký số đơn giản, không database, không đăng ký, đăng nhập. Yêu cầu Node.js 22 trở lên",
+    "localIntro": "Dùng khi đang sửa code hoặc muốn ký thử trên máy mình.",
+    "gitPullBody": "Nếu chưa có mã nguồn, clone về rồi kéo bản mới nhất. Nếu đã có thư mục repo, đứng trong thư mục đó và chỉ chạy git pull.",
+    "npmCiBody": "Cài đúng phiên bản dependency đã khóa trong package-lock.json.",
+    "envBody": "Copy file mẫu rồi điền key dùng thử. Key này dùng chung, chỉ để chạy thử — không dùng cho tài liệu thật hằng ngày.",
+    "envNote": "Xác minh chữ ký chạy được cả khi chưa điền env. Muốn ký thì cần đủ cả ba biến.",
+    "runBody": "Mở trình duyệt tại địa chỉ bên dưới. Dừng server bằng Ctrl+C trong terminal đang chạy.",
+    "pm2Body": "Trên VPS, làm xong các bước cài dependency và điền .env như khi chạy local, rồi build bản production và để pm2 giữ tiến trình. Lệnh pm2 startup in ra một dòng sudo — chạy đúng dòng đó để app tự bật lại sau khi máy reboot.",
+    "pm2Note": "npm run start chính là next start, lắng nghe cổng 3000. Đặt Nginx hoặc Caddy phía trước nếu cần HTTPS.",
+    "workerBody": "Kết nối repo với Cloudflare Workers Builds. Điền đúng hai lệnh này một lần, thư mục gốc để /.",
+    "workerBuild": "Build command",
+    "workerDeploy": "Deploy command",
+    "workerEnv": "Ba biến CAS_ESIGN_* điền ở Settings → Runtime → Variables and secrets. Không điền ở tab Builds — Worker đang chạy không đọc được giá trị ở đó. Mỗi lần push lên nhánh đã nối, Cloudflare tự build và deploy lại.",
+    "workerLocal": "Muốn xem bản Worker ngay trên máy, trước khi push:",
+    "signIntro": "KysoQR không giữ khóa ký. Người ký duyệt trên app Cas ID.",
+    "signSteps": {
+      "download": "Tải app Cas ID trên App Store hoặc Google Play.",
+      "register": "Trong app, đăng ký chữ ký số. Làm theo hướng dẫn trên",
+      "registerLink": "cas.so/cas-id/chu-ky-so/",
+      "do": "Trên KysoQR, tải PDF lên, đặt vị trí chữ ký rồi bấm ký. Quét mã QR bằng Cas ID, hoặc nhận thông báo trong app nếu đã nhập số căn cước. Duyệt yêu cầu ký, rồi tải PDF đã ký về."
+    },
+    "productionIntro": "Key trial chỉ để thử. Khi ký tài liệu thật hoặc gắn KysoQR vào sản phẩm, dùng key của chính bạn.",
+    "vendorBody": "Đăng ký thành vendor của Cas tại",
+    "vendorLink": "cas.so/",
+    "appBody": "Trong tài khoản vendor, tạo một App. Lấy client id và api key rồi thay hai dòng này trong .env (giữ nguyên CAS_ESIGN_BASE_URL):",
+    "appWorker": "Nếu app đang chạy trên Cloudflare, sửa hai biến này ở Runtime rồi deploy lại."
+  },
   "footer": {
     "title1": "Bảo mật chuẩn quốc tế",
     "title2": "Ký nhanh trong giây lát",

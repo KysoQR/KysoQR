@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 
-const GITHUB_URL = 'https://github.com/KysoQR/KysoQR';
+const GITHUB_URL = 'https://github.com/KysoQR/KysoQR/';
 /** Shields caches GitHub's count on their side, so this does not spend the
  * visitor's unauthenticated api.github.com quota (60 requests/hour/IP). */
 const SHIELDS_STARS_URL = 'https://img.shields.io/github/stars/KysoQR/KysoQR.json';

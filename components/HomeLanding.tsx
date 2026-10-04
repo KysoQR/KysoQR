@@ -91,7 +91,7 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
   };
 
   const handleViewRecent = (entry: RecentSignature) => {
-    router.push(`/verify?code=${encodeURIComponent(entry.code)}`);
+    router.push(`/verify/?code=${encodeURIComponent(entry.code)}`);
   };
 
   return (

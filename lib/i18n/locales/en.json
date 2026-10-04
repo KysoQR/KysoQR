@@ -141,6 +141,47 @@
       "note": "Looking up a signing round is a different check: it asks KysoQR about that QR-signing session. Tracing the certificate chain back applies to any PDF signed with a digital certificate, and does not need a session code."
     }
   },
+  "openSourcePage": {
+    "title": "Open-source signing",
+    "lead": "Run KysoQR on your own machine, sign a document with Cas ID, then switch to your own key when you use it for real.",
+    "tocLabel": "Contents",
+    "toc": {
+      "quick": "Quick start",
+      "local": "Run locally",
+      "pm2": "Deploy with pm2",
+      "worker": "Deploy on Cloudflare Workers",
+      "sign": "Sign a document",
+      "production": "Production rollout",
+      "vendor": "Register as a Cas vendor",
+      "app": "Create an app and update env"
+    },
+    "quickBody": "No database. You need Node.js 22 or newer. Three ways to run it: on your machine, on a VPS with pm2, or on Cloudflare Workers.",
+    "localIntro": "Use this while you are changing the code, or to try a signature on your own computer.",
+    "gitPullBody": "If you do not have the source yet, clone it and then pull the latest commit. If the repo folder is already there, stay in that folder and only run git pull.",
+    "npmCiBody": "Install the exact dependency versions locked in package-lock.json.",
+    "envBody": "Copy the example file and fill in the shared trial key. That key is for trying the app — not for signing real documents every day.",
+    "envNote": "Signature verification works even before you fill in env. Signing needs all three variables.",
+    "runBody": "Open the address below in a browser. Stop the server with Ctrl+C in the terminal that is running it.",
+    "pm2Body": "On a VPS, install dependencies and fill in .env the same way as a local run, then build the production app and let pm2 keep the process alive. pm2 startup prints a sudo command — run that exact line so the app comes back after a reboot.",
+    "pm2Note": "npm run start is next start, listening on port 3000. Put Nginx or Caddy in front of it when you need HTTPS.",
+    "workerBody": "Connect the repo to Cloudflare Workers Builds. Enter these two commands once, and leave the root directory as /.",
+    "workerBuild": "Build command",
+    "workerDeploy": "Deploy command",
+    "workerEnv": "Put the three CAS_ESIGN_* variables under Settings → Runtime → Variables and secrets. Do not put them under Builds — the running Worker does not read values from that tab. Each push to the connected branch builds and deploys again.",
+    "workerLocal": "To try the Worker build on your machine before you push:",
+    "signIntro": "KysoQR does not hold the signing key. The signer approves the request in the Cas ID app.",
+    "signSteps": {
+      "download": "Install the Cas ID app from the App Store or Google Play.",
+      "register": "In the app, register a digital signature. Follow the guide at",
+      "registerLink": "cas.so/cas-id/chu-ky-so/",
+      "do": "On KysoQR, upload a PDF, place the signature, and click sign. Scan the QR code with Cas ID, or accept the in-app notification if you already entered the national ID number. Approve the request, then download the signed PDF."
+    },
+    "productionIntro": "The trial key is only for trying the app. When you sign real documents, or ship KysoQR inside a product, use your own key.",
+    "vendorBody": "Register as a Cas vendor at",
+    "vendorLink": "cas.so/",
+    "appBody": "In the vendor account, create an App. Copy its client id and api key, then replace these two lines in .env (leave CAS_ESIGN_BASE_URL as it is):",
+    "appWorker": "If the app runs on Cloudflare, change these two variables under Runtime and deploy again."
+  },
   "footer": {
     "title1": "Internationally standard security",
     "title2": "Fast signing in seconds",

@@ -8,6 +8,13 @@ import LanguageSwitcher from './LanguageSwitcher';
 import { GithubStarsButton } from './GithubStarsButton';
 import { useWhyMenu } from './WhyMenu';
 
+/** `usePathname()` may or may not include the trailing slash depending on the
+ * router, so compare the path without one. */
+function samePath(pathname: string, matchPath: string): boolean {
+  const strip = (path: string) => (path.length > 1 ? path.replace(/\/+$/, '') : path);
+  return strip(pathname) === strip(matchPath);
+}
+
 /** Two-line items, same stacking as the Cas ID header: a short kicker on top,
  * the name in bold underneath. "Vì sao / Ký số QR" is omitted unless the
  * server has `public/why.html`. `/` matches no item. */
@@ -27,21 +34,21 @@ const NAV_ITEMS: {
   },
   {
     key: 'opensource',
-    href: '/opensource',
+    href: '/opensource/',
     matchPath: '/opensource',
     kickerKey: 'nav.openSourceKicker',
     labelKey: 'nav.openSourceLabel',
   },
   {
     key: 'api',
-    href: '/api#description/introduction',
+    href: '/api/#description/introduction',
     matchPath: '/api',
     kickerKey: 'nav.apiKicker',
     labelKey: 'nav.apiLabel',
   },
   {
     key: 'verify',
-    href: '/verify',
+    href: '/verify/',
     matchPath: '/verify',
     kickerKey: 'nav.verifyKicker',
     labelKey: 'nav.verifyLabel',
@@ -131,7 +138,7 @@ export default function Header({
                 const lines = (
                   <NavLines kicker={t(item.kickerKey)} label={t(item.labelKey)} align="center" />
                 );
-                const active = item.matchPath != null && pathname === item.matchPath;
+                const active = item.matchPath != null && samePath(pathname, item.matchPath);
                 const itemClass = `rounded-lg px-2 py-1.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 hover:bg-surface-soft ${
                   active ? 'bg-surface-soft' : ''
                 }`;
@@ -223,7 +230,7 @@ export default function Header({
                   const lines = (
                     <NavLines kicker={t(item.kickerKey)} label={t(item.labelKey)} align="start" />
                   );
-                  const active = item.matchPath != null && pathname === item.matchPath;
+                  const active = item.matchPath != null && samePath(pathname, item.matchPath);
                   const itemClass = `rounded-lg px-3 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 hover:bg-surface-soft ${
                     active ? 'bg-surface-soft' : ''
                   }`;
