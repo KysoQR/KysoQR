@@ -18,8 +18,8 @@
     "lint": "eslint . --fix",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "cf:build": "opennextjs-cloudflare build",
-    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview"
+    "cf:build": "node scripts/patchOpenNextOtelAlias.js && opennextjs-cloudflare build",
+    "cf:preview": "npm run cf:build && opennextjs-cloudflare preview"
   },
   "dependencies": {
     "@iconify/react": "6.0.2",
