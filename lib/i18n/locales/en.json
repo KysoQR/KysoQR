@@ -4,9 +4,7 @@
     "promo": "Secure digital signing for your documents"
   },
   "home": {
-    "eyebrow": "KysoQR",
     "title": "Sign a contract in one drag-and-drop.",
-    "subtitle": "KysoQR is a QR-based digital document signing service: upload a PDF, approve the signing request in the Cas ID app, and get back a validly signed PDF anyone can verify by its signing code or by uploading the file.",
     "instruction2": "Supports {{formats}} (Max {{maxSize}}MB)",
     "steps": {
       "upload": {
@@ -14,18 +12,17 @@
         "description": "Up to 10 MB. Files are held temporarily and deleted after 24 hours."
       },
       "place": {
-        "title": "Place your signature, then confirm in the Cas ID app",
-        "description": "Scan the QR code or receive a push notification in the Cas ID app to approve the signing request — a PAdES digital signature with a timestamp from a licensed CA."
+        "title": "Place the signature",
+        "description": "Review the document, place the signature, and optionally enter the signer's details."
+      },
+      "sign": {
+        "title": "Sign in the Cas ID app",
+        "description": "The signer reviews the document and approves the signing request."
       },
       "download": {
         "title": "Get back a validly signed PDF",
         "description": "Anyone can verify it anytime using the signing code printed on the file, or by uploading the PDF itself."
       }
-    },
-    "tags": {
-      "invoices": "Invoices & contracts",
-      "reconciliation": "Reconciliation reports",
-      "hr": "HR records"
     },
     "signCard": {
       "title": "Sign a document now, no login needed",

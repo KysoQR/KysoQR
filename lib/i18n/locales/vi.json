@@ -4,9 +4,7 @@
     "promo": "Ký số an toàn cho tài liệu của bạn"
   },
   "home": {
-    "eyebrow": "KysoQR",
     "title": "Ký số đơn giản, dễ hiểu như ký tay",
-    "subtitle": "KysoQR là dịch vụ ký số tài liệu qua mã QR: tải PDF lên, xác nhận yêu cầu ký ngay trên app Cas ID, nhận lại tệp PDF đã ký hợp lệ mà ai cũng có thể xác minh bằng mã phiên ký hoặc bằng cách tải tệp lên kiểm tra.",
     "instruction2": "Hỗ trợ {{formats}} (Tối đa {{maxSize}}MB)",
     "steps": {
       "upload": {
@@ -14,18 +12,17 @@
         "description": "Tối đa 10 MB. Tệp nằm trong bộ nhớ tạm, xoá sau 24 giờ."
       },
       "place": {
-        "title": "Đặt vị trí chữ ký, rồi xác nhận trên app Cas ID",
-        "description": "Quét mã QR hoặc nhận thông báo đẩy trên app Cas ID để duyệt yêu cầu ký — chữ ký số PAdES kèm dấu thời gian từ CA được cấp phép."
+        "title": "Đặt vị trí chữ ký",
+        "description": "Xem tài liệu và đặt vị trí chữ ký, điền thông tin người ký (tuỳ chọn)."
+      },
+      "sign": {
+        "title": "Quét QR bằng Cas ID để ký",
+        "description": "Người ký rà soát nội dung tài liệu và chấp thuận yêu cầu ký."
       },
       "download": {
-        "title": "Nhận lại tệp PDF đã ký hợp lệ",
+        "title": "Nhận tệp PDF đã ký",
         "description": "Ai cũng có thể xác minh bất cứ lúc nào bằng mã phiên ký in trên tệp, hoặc tải tệp PDF lên để kiểm tra."
       }
-    },
-    "tags": {
-      "invoices": "Hoá đơn & hợp đồng",
-      "reconciliation": "Biên bản đối soát",
-      "hr": "Hồ sơ nhân sự"
     },
     "signCard": {
       "title": "Ký tài liệu ngay, không cần đăng nhập",
@@ -58,7 +55,7 @@
       "title": "Ký bằng phương thức bạn đang có",
       "subtitle": "KysoQR do Casso phát triển. Chữ ký số được cấp bởi các tổ chức cung cấp dịch vụ chứng thực chữ ký số (CA) được cấp phép tại Việt Nam.",
       "availableBadge": "Dùng ngay trên KysoQR",
-      "inDevelopmentBadge": "Đang phát triển",
+      "inDevelopmentBadge": "Sắp ra mắt",
       "providersLabel": "Nhà cung cấp chữ ký",
       "registerFree": "Tặng 1000 chữ ký số miễn phí",
       "cassoTagline": "Hệ sinh thái trợ thủ tài chính CASSO - Lựa chọn tin cậy của các doanh nghiệp dẫn đầu.",

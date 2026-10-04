@@ -41,7 +41,7 @@ const NAV_ITEMS: {
   },
   {
     key: 'api',
-    href: '/api/#description/introduction',
+    href: '/api/',
     matchPath: '/api',
     kickerKey: 'nav.apiKicker',
     labelKey: 'nav.apiLabel',
@@ -115,7 +115,7 @@ export default function Header({
 
   return (
     <>
-      <header className="border-b border-border-subtle bg-white/95 backdrop-blur">
+      <header className="bg-white/95 backdrop-blur">
         <div
           className={`mx-auto flex h-[72px] items-center px-4 sm:px-6 lg:grid lg:grid-cols-[1fr_auto_1fr] ${maxWidthClassName}`}
         >
