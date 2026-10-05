@@ -125,7 +125,11 @@ export function VerifyDocumentPage() {
               <p className="mt-2 text-sm leading-relaxed text-text-secondary">
                 {t('verifyPage.session.description')}
               </p>
+              {/* suppressHydrationWarning on this page's form fields: mobile
+                  browsers (e.g. Chrome iOS autofill's `__gcruniqueid`) add
+                  attributes to them before React hydrates -- not our bug. */}
               <form
+                suppressHydrationWarning
                 className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center"
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -136,6 +140,7 @@ export function VerifyDocumentPage() {
                   {t('verify.form.codeLabel')}
                 </label>
                 <input
+                  suppressHydrationWarning
                   id="verify-code-input"
                   type="text"
                   value={codeInput}
@@ -220,6 +225,7 @@ export function VerifyDocumentPage() {
                   </button>
                 </label>
                 <input
+                  suppressHydrationWarning
                   id="verify-file-input"
                   type="file"
                   accept="application/pdf"
