@@ -229,7 +229,11 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
                   {validating ? t('common.uploading') : t('common.upload')}
                 </button>
               </label>
+              {/* suppressHydrationWarning: mobile browsers (e.g. Chrome iOS
+                  autofill's `__gcruniqueid`) add attributes to form fields
+                  before React hydrates -- not our bug. */}
               <input
+                suppressHydrationWarning
                 id="home-file-input"
                 type="file"
                 accept="application/pdf"

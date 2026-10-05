@@ -16,7 +16,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const showWhy = readWhyPage() !== null;
   return (
     <html lang="vi" suppressHydrationWarning>
-      <body>
+      {/* In-app browsers (Zalo, Messenger…) inject an inline style on
+          <body> before React hydrates -- ignore that, it's not our markup. */}
+      <body suppressHydrationWarning>
         <WhyMenuProvider available={showWhy}>{children}</WhyMenuProvider>
       </body>
     </html>

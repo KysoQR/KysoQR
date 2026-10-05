@@ -11,7 +11,15 @@ import {
   useRef,
   useState,
 } from 'react';
-import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from 'pdfjs-dist';
+// pdf.js "legacy" build (library + worker below): the default build touches
+// the global `Iterator` at load time, which Safari/iOS < 18.4 (and every
+// in-app browser on those iPhones) doesn't have -- that crashed the whole
+// page. The legacy build ships the needed polyfills.
+import {
+  GlobalWorkerOptions,
+  getDocument,
+  type PDFDocumentProxy,
+} from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import {
@@ -25,7 +33,7 @@ import {
 
 if (!GlobalWorkerOptions.workerSrc) {
   GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
+    'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
     import.meta.url
   ).toString();
 }
