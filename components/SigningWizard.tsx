@@ -359,6 +359,17 @@ export function SigningWizard({
   const signaturePlacementRef = useRef<SignaturePlacementHandle>(null);
   const [placementVisiblePage, setPlacementVisiblePage] = useState(1);
   const [placementPageCount, setPlacementPageCount] = useState<number | null>(null);
+  /** What's typed in the toolbar's page box while it has focus (`null` = not
+   * editing, show the visible page). Keeps the box editable -- it used to be
+   * bound straight to the visible page, so every keystroke snapped back. */
+  const [pageInputDraft, setPageInputDraft] = useState<string | null>(null);
+  const commitPageInput = () => {
+    const value = Number(pageInputDraft);
+    if (pageInputDraft && Number.isFinite(value) && value >= 1) {
+      signaturePlacementRef.current?.goToPage(value);
+    }
+    setPageInputDraft(null);
+  };
   const [placementZoomFactor, setPlacementZoomFactor] = useState(1);
   const [placementCanAddField, setPlacementCanAddField] = useState(false);
 
@@ -1031,15 +1042,28 @@ export function SigningWizard({
                     primary actions) read as green/highlighted; page-nav/zoom
                     stay small/secondary. */}
                 <div className="flex items-center gap-1.5 rounded-full border border-border-subtle bg-white px-2 py-1 text-xs text-text-secondary shadow-sm">
+                  {/* Typing only edits a local draft; Enter/blur jumps
+                      (out-of-range numbers are clamped by goToPage), Esc
+                      cancels. */}
                   <input
-                    type="number"
-                    step={1}
-                    min={1}
-                    max={placementPageCount ?? undefined}
-                    value={placementVisiblePage}
-                    onChange={(e) => {
-                      const value = e.currentTarget.valueAsNumber;
-                      if (Number.isFinite(value)) signaturePlacementRef.current?.goToPage(value);
+                    type="text"
+                    inputMode="numeric"
+                    value={pageInputDraft ?? String(placementVisiblePage)}
+                    onFocus={(e) => {
+                      setPageInputDraft(String(placementVisiblePage));
+                      e.currentTarget.select();
+                    }}
+                    onChange={(e) => setPageInputDraft(e.currentTarget.value.replace(/\D/g, ''))}
+                    onBlur={commitPageInput}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      } else if (e.key === 'Escape') {
+                        const input = e.currentTarget;
+                        setPageInputDraft(null);
+                        // Blur after the draft is dropped, so onBlur commits nothing.
+                        requestAnimationFrame(() => input.blur());
+                      }
                     }}
                     aria-label={t('common.page')}
                     className="w-8 rounded-full bg-surface-soft px-1 text-center text-xs text-text-main outline-none [appearance:textfield] focus:ring-2 focus:ring-primary/40 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
@@ -1163,6 +1187,7 @@ export function SigningWizard({
                         onPageCountChange={setPlacementPageCount}
                         onZoomFactorChange={setPlacementZoomFactor}
                         onCanAddFieldChange={setPlacementCanAddField}
+                        topInset={stickyOffset}
                       />
                     ) : (
                       <div className="mx-auto flex min-h-[360px] w-full flex-col items-center justify-center rounded-xl border border-border-subtle bg-surface-soft px-4 py-8 text-center">
