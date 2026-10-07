@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import Header from '@/components/Header';
@@ -1509,7 +1510,7 @@ export function SigningWizard({
           )}
 
           {step === 'done' && (
-            <section className="mb-6">
+            <section>
               <SigningCard>
                 {/* Custom 3-slot header row (title / centered buttons /
                       progress label) instead of SigningStepHeader's plain
@@ -1623,10 +1624,22 @@ export function SigningWizard({
                       ) : (
                         signedPdfUrl && (
                           <div className="rounded-xl border border-gray-200 bg-gray-50 p-2 sm:p-3">
+                            {/* On lg+, viewport minus the measured sticky
+                                header minus everything from this wrapper's
+                                top edge to the page bottom: 4.25rem = this
+                                wrapper's `sm:p-3` top + bottom (1.5rem) +
+                                the card's `sm:p-6` bottom (1.5rem) + <main>'s
+                                `sm:py-5` bottom (1.25rem). Subtracting less
+                                lets the page scroll the PDF viewer's own
+                                toolbar (zoom etc.) under the sticky header,
+                                out of reach -- update this if those paddings
+                                change. Passed as a CSS var so it still only
+                                applies from `lg` up. */}
                             <iframe
                               src={signedPdfUrl}
                               title={t('done.signedPdfTitle')}
-                              className="h-[65vh] w-full rounded-lg bg-white lg:h-[calc(100vh-18rem)]"
+                              style={{ '--sticky-offset': `${stickyOffset}px` } as CSSProperties}
+                              className="h-[65vh] w-full rounded-lg bg-white lg:h-[calc(100svh-var(--sticky-offset)-4.25rem)]"
                             />
                           </div>
                         )
@@ -1650,11 +1663,12 @@ export function SigningWizard({
         </div>
       </main>
 
-      {/* Same full-width footer as the landing page, on the scan and done
-          steps. Not on "upload": that step is a PDF workspace whose sticky
-          columns are sized to the viewport. The Casso brand band stays on
-          the landing page only. */}
-      {step !== 'upload' && (
+      {/* Same full-width footer as the landing page, on the scan step only.
+          Not on "upload": that step is a PDF workspace whose sticky columns
+          are sized to the viewport. Not on "done" either: that step gives
+          all its room to the signed-PDF preview. The Casso brand band stays
+          on the landing page only. */}
+      {step === 'scan' && (
         <div className="border-t border-border-subtle bg-white">
           <Footer />
         </div>
