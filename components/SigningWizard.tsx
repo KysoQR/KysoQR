@@ -24,6 +24,13 @@ import {
   isCasSignerConfigValid,
   type CasSignerConfigValue,
 } from '@/components/SignerConfigPanel';
+import {
+  SignMethodSelector,
+  UsbTokenPanel,
+  agentErrorMessage,
+  type SignMethod,
+} from '@/components/UsbTokenPanel';
+import { AgentRequestError, isAgentSigningEnabled, signPdfWithAgent } from '@/lib/agentClient';
 import { DownloadReminderModal } from '@/components/DownloadReminderModal';
 import { SignRequestErrorModal } from '@/components/SignRequestErrorModal';
 import { VerificationPopup } from '@/components/VerificationPopup';
@@ -261,6 +268,12 @@ export function SigningWizard({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragCounter, setDragCounter] = useState(0);
   const [signerConfig, setSignerConfig] = useState<CasSignerConfigValue>(DEFAULT_SIGNER_CONFIG);
+  // "Ký bằng": Cas ID (QR, the CAS round trip below) or a USB token through
+  // the local KysoQR Agent, which signs on this machine and hands the signed
+  // PDF straight back -- no signRequestId/identityKey, nothing persisted.
+  const [signMethod, setSignMethod] = useState<SignMethod>('cas');
+  const [usbCertId, setUsbCertId] = useState<string | null>(null);
+  const localSignedBlobRef = useRef<Blob | null>(null);
   const [signatureFields, setSignatureFields] = useState<SignatureFieldProps[]>([]);
 
   // The left column (upload + signer config) follows whether the document
@@ -425,10 +438,10 @@ export function SigningWizard({
   const steps = useMemo(
     () => [
       { key: 'upload', label: t('steps.uploadRequest') },
-      { key: 'scan', label: t('steps.scan') },
+      { key: 'scan', label: signMethod === 'usb' ? t('steps.pin') : t('steps.scan') },
       { key: 'done', label: t('steps.done') },
     ],
-    [t]
+    [t, signMethod]
   );
   const progressLabel = t('steps.progressLabel', {
     current: currentStepIndex + 1,
@@ -633,11 +646,48 @@ export function SigningWizard({
   const canSubmit =
     Boolean(file) &&
     signatureFields.length > 0 &&
-    isCasSignerConfigValid(signerConfig) &&
+    (signMethod === 'usb' ? Boolean(usbCertId) : isCasSignerConfigValid(signerConfig)) &&
     !submitting;
+
+  /** USB token: the agent asks for the PIN in its own window, signs on this
+   * machine and returns the signed PDF -- shown in step 3 exactly like a CAS
+   * result, just without a verification code. Step 2 ("Nhập PIN") is only a
+   * waiting screen while the agent's window is open. */
+  const handleUsbSubmit = useCallback(async () => {
+    if (!file || !usbCertId) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    setStep('scan');
+    try {
+      const blob = await signPdfWithAgent(usbCertId, file, signatureFields);
+      // A previous CAS round's identityKey must not drive "Tiếp tục ký" /
+      // the download fallback for this local result.
+      clearPersistedSession();
+      window.localStorage.setItem(LS_KEYS.documentName, file.name);
+      if (signedPdfUrlRef.current) URL.revokeObjectURL(signedPdfUrlRef.current);
+      localSignedBlobRef.current = blob;
+      setSignedPdfUrl(URL.createObjectURL(blob));
+      setSignedPdfError(null);
+      setOrgIdSigned(null);
+      setStatus('SIGNED');
+      setShowDownloadReminder(true);
+      setStep('done');
+    } catch (err) {
+      setStep('upload');
+      // Cancelling the PIN window is a deliberate choice, not an error.
+      if (err instanceof AgentRequestError && err.code === 'PIN_CANCELLED') return;
+      setSubmitError(agentErrorMessage(err, t));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [file, usbCertId, signatureFields, t]);
 
   const handleSubmit = useCallback(async () => {
     if (!file) return;
+    if (signMethod === 'usb') {
+      await handleUsbSubmit();
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -679,7 +729,7 @@ export function SigningWizard({
     } finally {
       setSubmitting(false);
     }
-  }, [file, signatureFields, signerConfig, i18n.language]);
+  }, [file, signatureFields, signerConfig, i18n.language, signMethod, handleUsbSubmit]);
 
   /** Shared fetch+error-handling for /api/sign/download — used both to show
    * the inline preview (fetchSignedPdfOnce, below) and to feed a fresh File
@@ -866,6 +916,7 @@ export function SigningWizard({
 
   const resetFlow = () => {
     clearPersistedSession();
+    localSignedBlobRef.current = null;
     if (signedPdfUrlRef.current) URL.revokeObjectURL(signedPdfUrlRef.current);
     if (onBackToHome) {
       onBackToHome();
@@ -923,12 +974,16 @@ export function SigningWizard({
    * HomeLanding's initialFile hand-off — same mechanism). Deliberately keeps
    * signerConfig (a re-signer is usually the same person/entity). */
   const handleContinueSigning = useCallback(async () => {
-    const savedIdentityKey = window.localStorage.getItem(LS_KEYS.identityKey);
-    if (!savedIdentityKey) return;
     const savedName = window.localStorage.getItem(LS_KEYS.documentName) || 'signed.pdf';
-
-    const blob = await downloadSignedPdfBlob(savedIdentityKey);
-    if (!blob) return; // error already surfaced via signedPdfError
+    // A USB-token result is already in memory; a CAS one is re-downloaded.
+    let blob = localSignedBlobRef.current;
+    if (!blob) {
+      const savedIdentityKey = window.localStorage.getItem(LS_KEYS.identityKey);
+      if (!savedIdentityKey) return;
+      blob = await downloadSignedPdfBlob(savedIdentityKey);
+      if (!blob) return; // error already surfaced via signedPdfError
+    }
+    localSignedBlobRef.current = null;
 
     // This identityKey has now served its purpose — consume it.
     clearPersistedSession();
@@ -1314,7 +1369,26 @@ export function SigningWizard({
                               className="pointer-events-none absolute -inset-2 animate-pulse rounded-xl ring-2 ring-primary"
                             />
                           )}
-                          <SignerConfigPanel value={signerConfig} onChange={setSignerConfig} />
+                          <div className="space-y-3">
+                            {/* Only offered when this deployment points at an
+                                agent (NEXT_PUBLIC_KYSOQR_AGENT_URL). */}
+                            {isAgentSigningEnabled && (
+                              <SignMethodSelector
+                                value={signMethod}
+                                onChange={setSignMethod}
+                                disabled={submitting}
+                              />
+                            )}
+                            {signMethod === 'usb' ? (
+                              <UsbTokenPanel
+                                value={usbCertId}
+                                onChange={setUsbCertId}
+                                disabled={submitting}
+                              />
+                            ) : (
+                              <SignerConfigPanel value={signerConfig} onChange={setSignerConfig} />
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -1349,7 +1423,41 @@ export function SigningWizard({
             </section>
           )}
 
-          {step === 'scan' && (
+          {step === 'scan' && signMethod === 'usb' && (
+            // USB token: only a waiting screen. The PIN is typed in the
+            // agent's own native window on this computer -- never on this
+            // page, so it never reaches the browser or the KysoQR server.
+            <section className="mx-auto my-auto flex w-full max-w-[780px] flex-col self-center">
+              <div
+                className="flex flex-col justify-center"
+                style={{ minHeight: `calc(100svh - ${stickyOffset}px - 2.5rem)` }}
+              >
+                <SigningCard className="flex flex-col">
+                  <SigningStepHeader
+                    stepNumber={2}
+                    title={t('usbToken.pinTitle')}
+                    trailingContent={progressLabel}
+                  />
+                  <div className="mt-6 flex flex-col items-center gap-4 text-center">
+                    <span className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-soft text-primary-strong">
+                      <Icon icon="lucide:key-round" className="h-8 w-8" />
+                    </span>
+                    <p className="max-w-md text-sm text-text-main">{t('usbToken.pinInstruction')}</p>
+                    <div className="flex items-start gap-2 rounded-xl border border-border-subtle bg-surface-soft px-4 py-3 text-left text-sm text-primary-strong">
+                      <Icon icon="lucide:shield-check" className="mt-0.5 h-4 w-4 shrink-0" />
+                      <p>{t('usbToken.pinSafety')}</p>
+                    </div>
+                    <span className="inline-flex items-center gap-2 text-sm text-text-muted">
+                      <InlineSpinner />
+                      {t('usbToken.pinWaiting')}
+                    </span>
+                  </div>
+                </SigningCard>
+              </div>
+            </section>
+          )}
+
+          {step === 'scan' && signMethod === 'cas' && (
             // No `flex-1` here (unlike a previous version) -- letting the
             // card stretch to fill the remaining viewport height left a
             // large, visually awkward empty white block below this step's

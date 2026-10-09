@@ -198,7 +198,8 @@
     "ariaProgress": "Signing progress",
     "helperUploadRequest": "Start by uploading your PDF and preparing the signing request.",
     "helperScan": "Ask the signer to scan the QR code with their Cas ID app and approve the signing request.",
-    "helperDone": "Open or download the signed PDF and keep it with your records."
+    "helperDone": "Open or download the signed PDF and keep it with your records.",
+    "pin": "Enter PIN"
   },
   "common": {
     "upload": "Upload",
@@ -454,5 +455,43 @@
         "unavailableWithUrl": "Could not be checked"
       }
     }
+  },
+  "signMethod": {
+    "label": "Sign with",
+    "cas": "Cas ID (QR)",
+    "usb": "USB Token"
+  },
+  "usbToken": {
+    "certificateLabel": "Certificate on the USB token",
+    "loading": "Looking for USB tokens on this computer…",
+    "refresh": "Refresh",
+    "empty": "No certificate found. Plug in your USB token, then click \"Refresh\".",
+    "validUntil": "valid until {{date}}",
+    "expiredOn": "expired {{date}}",
+    "validFrom": "valid from {{date}}",
+    "expired": "Expired",
+    "notYetValid": "Not yet valid",
+    "pinHint": "The PIN is typed in the KysoQR Agent window on your computer, never on this website.",
+    "pinTitle": "Enter your PIN on your computer",
+    "pinInstruction": "The \"KysoQR - Nhập PIN USB Token\" window has just opened on your computer. Type your USB token PIN there and click Ký (Sign). Keep the token plugged in until signing finishes.",
+    "pinSafety": "This website never asks for your PIN. It only goes from the KysoQR Agent window into the USB token, never through the browser or the KysoQR server.",
+    "pinWaiting": "Waiting for the PIN and signing…",
+    "errors": {
+      "AGENT_UNREACHABLE": "Cannot reach the KysoQR Agent on this computer. Start the agent, then click \"Refresh\".",
+      "AGENT_TICKET_NOT_CONFIGURED": "USB token signing is not enabled on this KysoQR server.",
+      "AGENT_TICKET_FAILED": "Could not get an authentication ticket from the KysoQR server. Please try again.",
+      "AGENT_NOT_CONFIGURED": "The KysoQR Agent has no handshake key configured (PUBLIC_KEY_HAND_SHAKE_AGENT).",
+      "TICKET_INVALID": "The KysoQR Agent rejected the request: invalid ticket. Check that the agent and the server use the same handshake key pair.",
+      "ORIGIN_NOT_ALLOWED": "The KysoQR Agent does not accept calls from this page.",
+      "AGENT_BUSY": "The KysoQR Agent is busy with another signing. Finish the PIN window that is open.",
+      "PIN_FINAL_TRY": "Only 1 PIN try left on this token. To avoid locking it, log in with the provider's token software first.",
+      "TOKEN_MISMATCH": "The plugged-in USB token does not match the chosen certificate. Click \"Refresh\" and choose again. (No PIN was sent.)",
+      "CHALLENGE_INVALID": "The handshake with the KysoQR Agent failed (code already used or expired). Click \"Refresh\" or try again.",
+      "INVALID_CHALLENGE": "The KysoQR Agent did not return a valid handshake code. Update or restart the agent."
+    },
+    "usableCount": "{{usable}}/{{total}} valid",
+    "pinCountLowWarning": "A wrong PIN was already entered on this token and few tries are left. Check your PIN carefully before signing.",
+    "pinFinalTryWarning": "Only 1 PIN try left on this token. Log in with the provider's software first before signing here.",
+    "pinLockedWarning": "This token's PIN is locked. Contact the provider to unlock it."
   }
 }

@@ -13,8 +13,11 @@ import { parse } from 'yaml';
 
 const ROOT = process.cwd();
 const API_DIR = path.join(ROOT, 'app', 'api');
-/** Internal UI helpers, deliberately left out of the public API docs (none today). */
-const UNDOCUMENTED_ROUTES = new Set<string>();
+/** Internal UI helpers, deliberately left out of the public API docs. */
+const UNDOCUMENTED_ROUTES = new Set<string>([
+  // Ticket for the local USB-token agent (lib/agentTicket.ts), used by the UI only.
+  '/api/agent-ticket',
+]);
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 
 type Spec = {

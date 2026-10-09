@@ -197,7 +197,8 @@
     "ariaProgress": "Tiến trình ký tài liệu",
     "helperUploadRequest": "Bắt đầu bằng cách tải PDF lên và chuẩn bị yêu cầu ký.",
     "helperScan": "Người ký quét mã QR bằng ứng dụng Cas ID và chấp thuận quyền ký.",
-    "helperDone": "Mở hoặc tải về PDF đã ký để lưu trữ và chia sẻ."
+    "helperDone": "Mở hoặc tải về PDF đã ký để lưu trữ và chia sẻ.",
+    "pin": "Nhập PIN"
   },
   "common": {
     "upload": "Tải lên",
@@ -452,5 +453,43 @@
         "unavailableWithUrl": "Không kiểm tra được"
       }
     }
+  },
+  "signMethod": {
+    "label": "Ký bằng",
+    "cas": "Cas ID (QR)",
+    "usb": "USB Token"
+  },
+  "usbToken": {
+    "certificateLabel": "Chứng thư số trên USB Token",
+    "loading": "Đang tìm USB Token trên máy…",
+    "refresh": "Làm mới",
+    "empty": "Không tìm thấy chứng thư số nào. Hãy cắm USB Token rồi bấm \"Làm mới\".",
+    "validUntil": "hạn {{date}}",
+    "expiredOn": "hết hạn {{date}}",
+    "validFrom": "hiệu lực từ {{date}}",
+    "expired": "Hết hạn",
+    "notYetValid": "Chưa hiệu lực",
+    "pinHint": "Mã PIN được nhập trong cửa sổ của KysoQR Agent trên máy tính, không nhập trên trang web.",
+    "pinTitle": "Nhập mã PIN trên máy tính",
+    "pinInstruction": "Cửa sổ \"KysoQR - Nhập PIN USB Token\" vừa mở trên máy tính của bạn. Hãy nhập mã PIN của USB Token vào đó và bấm Ký. Đừng rút token cho tới khi ký xong.",
+    "pinSafety": "Trang web này không bao giờ hỏi mã PIN. PIN chỉ đi từ cửa sổ KysoQR Agent vào USB Token, không gửi qua trình duyệt hay máy chủ KysoQR.",
+    "pinWaiting": "Đang chờ nhập PIN và ký…",
+    "errors": {
+      "AGENT_UNREACHABLE": "Không kết nối được KysoQR Agent trên máy này. Hãy bật agent rồi bấm \"Làm mới\".",
+      "AGENT_TICKET_NOT_CONFIGURED": "Máy chủ KysoQR chưa bật tính năng ký bằng USB Token.",
+      "AGENT_TICKET_FAILED": "Không lấy được vé xác thực từ máy chủ KysoQR. Hãy thử lại.",
+      "AGENT_NOT_CONFIGURED": "KysoQR Agent chưa được cấu hình khoá bắt tay (PUBLIC_KEY_HAND_SHAKE_AGENT).",
+      "TICKET_INVALID": "KysoQR Agent từ chối yêu cầu: vé xác thực không hợp lệ. Hãy kiểm tra agent và máy chủ dùng cùng cặp khoá bắt tay.",
+      "ORIGIN_NOT_ALLOWED": "KysoQR Agent không cho phép trang này gọi tới.",
+      "AGENT_BUSY": "KysoQR Agent đang xử lý một lượt ký khác. Hãy hoàn tất cửa sổ PIN đang mở.",
+      "PIN_FINAL_TRY": "Token chỉ còn 1 lần thử PIN. Để tránh khoá token, hãy đăng nhập bằng phần mềm quản lý token của nhà cung cấp trước.",
+      "TOKEN_MISMATCH": "USB token đang cắm không khớp với chứng thư đã chọn. Hãy bấm \"Làm mới\" rồi chọn lại. (Chưa gửi PIN.)",
+      "CHALLENGE_INVALID": "Bắt tay với KysoQR Agent không thành công (mã đã dùng hoặc hết hạn). Hãy bấm \"Làm mới\" hoặc thử lại.",
+      "INVALID_CHALLENGE": "KysoQR Agent không trả mã bắt tay hợp lệ. Hãy cập nhật hoặc khởi động lại agent."
+    },
+    "usableCount": "{{usable}}/{{total}} còn hạn",
+    "pinCountLowWarning": "Token này đã có lần nhập sai PIN, còn ít lượt thử. Hãy kiểm tra kỹ PIN trước khi ký.",
+    "pinFinalTryWarning": "Token chỉ còn 1 lần thử PIN. Hãy đăng nhập bằng phần mềm của nhà cung cấp trước khi ký ở đây.",
+    "pinLockedWarning": "Token đã bị khoá PIN. Hãy liên hệ nhà cung cấp để mở khoá."
   }
 }
