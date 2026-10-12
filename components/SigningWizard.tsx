@@ -54,7 +54,12 @@ import Footer from './Footer';
  */
 
 type Step = 'upload' | 'scan' | 'done';
-const STEP_ORDER: Step[] = ['upload', 'scan', 'done'];
+
+/** The 4 steps the home page shows (same i18n keys, so they always match):
+ * upload -> place the signature -> scan the QR -> get the signed PDF. The
+ * internal `Step` stays 3-valued; the 'upload' step is shown as step 1
+ * until a file is loaded, then as step 2 (placement). */
+const DISPLAY_STEP_KEYS = ['upload', 'place', 'sign', 'download'] as const;
 
 /**
  * The 3 form/PDF/history columns "anchor" via `position: sticky; top:
@@ -421,13 +426,9 @@ export function SigningWizard({
    * the toolbar can show a "verifying" spinner instead of nothing. */
   const [checkingSignatures, setCheckingSignatures] = useState(false);
 
-  const currentStepIndex = STEP_ORDER.indexOf(step);
+  const currentStepIndex = step === 'done' ? 3 : step === 'scan' ? 2 : file ? 1 : 0;
   const steps = useMemo(
-    () => [
-      { key: 'upload', label: t('steps.uploadRequest') },
-      { key: 'scan', label: t('steps.scan') },
-      { key: 'done', label: t('steps.done') },
-    ],
+    () => DISPLAY_STEP_KEYS.map((key) => ({ key, label: t(`home.steps.${key}.title`) })),
     [t]
   );
   const progressLabel = t('steps.progressLabel', {
@@ -1140,8 +1141,8 @@ export function SigningWizard({
             <section className="mb-4 mt-2 flex flex-col">
               <SigningCard className="flex flex-1 flex-col">
                 <SigningStepHeader
-                  stepNumber={1}
-                  title={t('upload.title')}
+                  stepNumber={currentStepIndex + 1}
+                  title={steps[currentStepIndex]!.label}
                   trailingContent={progressLabel}
                 />
                 <div className={`mt-4 grid gap-6 ${gridColsClassName}`}>
@@ -1372,7 +1373,7 @@ export function SigningWizard({
               >
                 <SigningCard className="flex flex-col">
                   <SigningStepHeader
-                    stepNumber={2}
+                    stepNumber={3}
                     title={t('scan.title')}
                     trailingContent={progressLabel}
                   />
@@ -1519,7 +1520,7 @@ export function SigningWizard({
                       far right, it can't center it in the remaining space.
                       Mirrors the same left/center/right pattern already used
                       for the site Header's logo/steps/right-controls row.
-                      The 4 action buttons (+ "Bước 3/3") share this row
+                      The 4 action buttons (+ "Bước 4/4") share this row
                       instead of their own separate rows underneath -- see
                       the PDF-preview height right below, which grows into
                       the space reclaimed here. Plain <button> markup (not
@@ -1532,7 +1533,7 @@ export function SigningWizard({
                 <div className="mb-4 flex flex-wrap items-center gap-2">
                   <h2 className="flex shrink-0 items-center gap-2 text-base font-semibold text-primary-strong sm:text-lg">
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white">
-                      3
+                      4
                     </span>
                     <span>{t('done.title')}</span>
                   </h2>

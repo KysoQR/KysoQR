@@ -3,14 +3,16 @@ import type { AddressInfo } from 'node:net';
 import * as asn1js from 'asn1js';
 import forge from 'node-forge';
 import * as pkijs from 'pkijs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resetAiaCertCacheForTests } from './aiaCertCache';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetAiaCertCacheForTests, setCachedAiaCerts } from './aiaCertCache';
 import {
+  type AiaInFlight,
   fetchBytesWithGuards,
   fetchCaIssuerCertificates,
   findAllAiaUrls,
   isAddressAllowed,
   KNOWN_AIA_URL_CORRECTIONS,
+  setAiaRetryDelaysForTests,
 } from './aiaCertFetcher';
 
 /**
@@ -519,6 +521,125 @@ describe('fetchCaIssuerCertificates', () => {
     expect(second.certs).toHaveLength(1);
     expect(forge.pki.certificateToPem(second.certs[0]!)).toBe(forge.pki.certificateToPem(intermediate));
     expect(requestCount).toBe(1); // still 1 -- second call was served from the cache
+  });
+
+  describe('retry, sharing and stale fallback', () => {
+    beforeEach(() => setAiaRetryDelaysForTests([0, 0]));
+    afterEach(() => setAiaRetryDelaysForTests());
+
+    it('a fast failure is retried: 503 then the certificate -> attempts === 2', async () => {
+      const intermediate = await buildIntermediateCert();
+      let requestCount = 0;
+      const url = await startServer((_req, res) => {
+        requestCount += 1;
+        if (requestCount === 1) {
+          res.writeHead(503);
+          res.end('busy');
+          return;
+        }
+        res.writeHead(200);
+        res.end(forge.pki.certificateToPem(intermediate));
+      });
+      const { leafForge } = await buildLeafWithAia([url]);
+      const result = await fetchCaIssuerCertificates(leafForge, allowAll);
+      expect(result.certs).toHaveLength(1);
+      expect(result.attempts).toBe(2);
+      expect(requestCount).toBe(2);
+    });
+
+    it('gives up after 3 attempts and reports why', async () => {
+      let requestCount = 0;
+      const url = await startServer((_req, res) => {
+        requestCount += 1;
+        res.writeHead(500);
+        res.end('broken');
+      });
+      const { leafForge } = await buildLeafWithAia([url]);
+      const result = await fetchCaIssuerCertificates(leafForge, allowAll);
+      expect(result.certs).toEqual([]);
+      expect(result.attempts).toBe(3);
+      expect(result.error).toMatch(/HTTP 500/);
+      expect(requestCount).toBe(3);
+    });
+
+    it('signatures of one verification sharing a Map download the intermediate once', async () => {
+      const intermediate = await buildIntermediateCert();
+      let requestCount = 0;
+      const url = await startServer((_req, res) => {
+        requestCount += 1;
+        setTimeout(() => {
+          res.writeHead(200);
+          res.end(forge.pki.certificateToPem(intermediate));
+        }, 50);
+      });
+      const leaves = await Promise.all([1, 2, 3].map(() => buildLeafWithAia([url])));
+      const inFlight: AiaInFlight = new Map();
+      const results = await Promise.all(
+        leaves.map(({ leafForge }) => fetchCaIssuerCertificates(leafForge, allowAll, inFlight))
+      );
+      expect(results.map((r) => r.certs.length)).toEqual([1, 1, 1]);
+      expect(requestCount).toBe(1);
+      expect(inFlight.size).toBe(0); // cleaned up once settled
+    });
+
+    it('without a shared Map, concurrent calls do not share (no cross-request sharing)', async () => {
+      const intermediate = await buildIntermediateCert();
+      let requestCount = 0;
+      const url = await startServer((_req, res) => {
+        requestCount += 1;
+        setTimeout(() => {
+          res.writeHead(200);
+          res.end(forge.pki.certificateToPem(intermediate));
+        }, 50);
+      });
+      const leaves = await Promise.all([1, 2].map(() => buildLeafWithAia([url])));
+      await Promise.all(leaves.map(({ leafForge }) => fetchCaIssuerCertificates(leafForge, allowAll)));
+      expect(requestCount).toBe(2);
+    });
+
+    it('uses the expired cached copy when the fresh fetch fails', async () => {
+      const intermediate = await buildIntermediateCert();
+      const url = await startServer((_req, res) => {
+        res.writeHead(500);
+        res.end('broken');
+      });
+      setCachedAiaCerts(url, [intermediate]);
+      const now = Date.now();
+      vi.spyOn(Date, 'now').mockReturnValue(now + 25 * 60 * 60 * 1000); // past the 24h TTL
+      const { leafForge } = await buildLeafWithAia([url]);
+      const result = await fetchCaIssuerCertificates(leafForge, allowAll);
+      expect(result.stale).toBe(true);
+      expect(result.certs).toHaveLength(1);
+      expect(forge.pki.certificateToPem(result.certs[0]!)).toBe(forge.pki.certificateToPem(intermediate));
+      expect(result.error).toMatch(/HTTP 500/);
+    });
+
+    it('a policy rejection (SSRF guard) is never retried and never reaches the server', async () => {
+      let requestCount = 0;
+      const url = await startServer((_req, res) => {
+        requestCount += 1;
+        res.writeHead(200);
+        res.end('should never be requested');
+      });
+      const { leafForge } = await buildLeafWithAia([url]);
+      const result = await fetchCaIssuerCertificates(leafForge); // real guard: loopback refused
+      expect(result.error).toMatch(/SSRF_BLOCKED/);
+      expect(result.attempts).toBe(1);
+      expect(requestCount).toBe(0);
+    });
+
+    it('a timeout is not retried (keeps the worst-case wait at one timeout)', async () => {
+      let requestCount = 0;
+      const url = await startServer(() => {
+        requestCount += 1; // never answers
+      });
+      const { leafForge } = await buildLeafWithAia([url]);
+      const result = await fetchCaIssuerCertificates(leafForge, allowAll);
+      expect(result.certs).toEqual([]);
+      expect(result.error).toMatch(/timed out$/);
+      expect(result.attempts).toBe(1);
+      expect(requestCount).toBe(1);
+    }, 15000);
   });
 });
 
