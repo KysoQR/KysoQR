@@ -190,9 +190,6 @@
     "scan": "Chưa có chữ ký số? Kéo xuống để đăng ký"
   },
   "steps": {
-    "uploadRequest": "Tải PDF & yêu cầu quyền",
-    "scan": "Quét QR",
-    "done": "Tài liệu đã ký",
     "progressLabel": "Bước {{current}}/{{total}}",
     "ariaProgress": "Tiến trình ký tài liệu",
     "helperUploadRequest": "Bắt đầu bằng cách tải PDF lên và chuẩn bị yêu cầu ký.",

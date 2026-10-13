@@ -1,7 +1,8 @@
 import type { TrustStore } from '../trustStore/TrustStore';
 import { parseCertificateInfo } from './certParser';
 import { parseCmsMessage } from './cmsAsn1';
-import { type ChainCertInfo, verifyCertificateChainFromCmsBuffer } from './certChainVerifier';
+import type { AiaInFlight } from './aiaCertFetcher';
+import { type AiaFailure, type ChainCertInfo, verifyCertificateChainFromCmsBuffer } from './certChainVerifier';
 import { verifyPdfContentDigest } from './pdfContentDigestVerifier';
 import {
   type ExtractCmsSuccess,
@@ -68,11 +69,25 @@ function toVerificationCertificate(
   };
 }
 
+/** Server-log summary of failed intermediate-certificate downloads, e.g.
+ * "http://ca.example/sub.crt: Guarded fetch to ca.example timed out (1 attempt)".
+ * Exported for tests only. */
+export function describeAiaFailures(failures: AiaFailure[] | undefined): string | undefined {
+  if (!failures || failures.length === 0) return undefined;
+  return failures
+    .map((f) => {
+      const tries = f.attempts ? ` (${f.attempts} attempt${f.attempts === 1 ? '' : 's'})` : '';
+      return `${f.url ?? '(no URL)'}: ${f.error}${tries}${f.stale ? ', used expired cached copy' : ''}`;
+    })
+    .join('; ');
+}
+
 async function verifyOneSignature(
   pdfBytes: Buffer,
   extracted: ExtractCmsSuccess,
   trustStore: TrustStore,
-  wholeFileCovered: boolean
+  wholeFileCovered: boolean,
+  aiaInFlight?: AiaInFlight
 ): Promise<DetailedVerificationResult> {
   const { cmsDer, byteRange, dictSigningTime } = extracted;
 
@@ -160,7 +175,8 @@ async function verifyOneSignature(
   const chainResult = await verifyCertificateChainFromCmsBuffer(
     cmsDer,
     trustStore,
-    validityCheckDate
+    validityCheckDate,
+    aiaInFlight
   );
 
   if (!chainResult) {
@@ -197,6 +213,8 @@ async function verifyOneSignature(
           reason: 'ROOT_NOT_IN_TRUST_STORE',
           rootIssuer: chainResult.chain[chainResult.chain.length - 1]?.issuer,
           certSerial: certificate?.serialNumber,
+          // Why the chain may have stopped short (log only, never sent to the client).
+          aiaError: describeAiaFailures(chainResult.aiaFailures),
         },
       };
     }
@@ -215,6 +233,7 @@ async function verifyOneSignature(
         error: chainResult.error,
         chainLength: chainResult.chain.length,
         certSerial: certificate?.serialNumber,
+        aiaError: describeAiaFailures(chainResult.aiaFailures),
       },
     };
   }
@@ -302,6 +321,9 @@ export async function verifyPdfSignaturesDetailed(
   }
 
   const all = extraction.values;
+  // Signatures of this one PDF share intermediate-certificate downloads (one
+  // fetch per CA, not one per signature); never shared across requests.
+  const aiaInFlight: AiaInFlight = new Map();
 
   // Coverage is judged on the newest entry of any kind (a PAdES-LTA
   // document timestamp usually is the newest one), but the verdict is
@@ -322,7 +344,8 @@ export async function verifyPdfSignaturesDetailed(
             pdfBytes,
             value,
             trustStore,
-            index === lastSupportedIndex ? wholeFileCovered : true
+            index === lastSupportedIndex ? wholeFileCovered : true,
+            aiaInFlight
           ).catch((error: unknown) => ({
             result: {
               status: 'SIGNATURE_INVALID',

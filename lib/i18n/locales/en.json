@@ -191,9 +191,6 @@
     "scan": "No digital signature yet? Scroll down to register"
   },
   "steps": {
-    "uploadRequest": "Upload PDF & request permission",
-    "scan": "Scan QR",
-    "done": "Signed document",
     "progressLabel": "Step {{current}} of {{total}}",
     "ariaProgress": "Signing progress",
     "helperUploadRequest": "Start by uploading your PDF and preparing the signing request.",

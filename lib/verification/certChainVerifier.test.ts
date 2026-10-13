@@ -362,4 +362,54 @@ describe('certChainVerifier: dynamic AIA-based issuer discovery', () => {
     expect(result?.valid).toBe(false);
     expect(mockFetchCaIssuerCertificates.mock.calls.length).toBeLessThanOrEqual(5);
   });
+
+  it('a failed intermediate download is reported (aiaFailures + [aia] server log), not swallowed', async () => {
+    const rootKeys = forge.pki.rsa.generateKeyPair(2048);
+    const rootCert = createCert(
+      'Test Root CA',
+      [{ name: 'commonName', value: 'Test Root CA' }],
+      rootKeys.publicKey,
+      rootKeys.privateKey,
+      { isCa: true }
+    );
+    const intermediateKeys = forge.pki.rsa.generateKeyPair(2048);
+    const intermediateAttrs = [{ name: 'commonName', value: 'Flaky Intermediate CA' }];
+    const leafKeys = forge.pki.rsa.generateKeyPair(2048);
+    const leafCert = createCert('Test Signer', intermediateAttrs, leafKeys.publicKey, intermediateKeys.privateKey, {
+      isCa: false,
+    });
+
+    mockFetchCaIssuerCertificates.mockResolvedValue({
+      certs: [],
+      url: 'http://ca.example.test/sub.crt',
+      error: 'Guarded fetch to ca.example.test timed out',
+      attempts: 1,
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const rootPem = forge.pki.certificateToPem(rootCert);
+    const result = await verifyCertificateChainFromCmsBuffer(
+      buildDetachedCmsDer(leafCert, leafKeys.privateKey),
+      { isConfigured: () => true, isTrustedRoot: (pem) => pem === rootPem, getTrustedRootPems: () => [rootPem] },
+      new Date('2026-01-01T00:00:00Z')
+    );
+
+    expect(result?.valid).toBe(false);
+    expect(result?.rootNotInTrustStore).toBe(true);
+    expect(result?.aiaFailures).toEqual([
+      {
+        url: 'http://ca.example.test/sub.crt',
+        attempts: 1,
+        error: 'Guarded fetch to ca.example.test timed out',
+        stale: false,
+      },
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      '[aia] intermediate certificate download failed',
+      expect.objectContaining({ url: 'http://ca.example.test/sub.crt', error: expect.stringMatching(/timed out/) })
+    );
+    // Display chain sent to the client stays exactly as before (no AIA detail in it).
+    expect(JSON.stringify(result?.chain)).not.toContain('ca.example.test');
+    warn.mockRestore();
+  });
 });
