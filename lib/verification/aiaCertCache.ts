@@ -27,11 +27,13 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-/** CA intermediate certs are practically static (validity spans years) -- an
- * hour is long enough to eliminate nearly all redundant fetches under normal
- * traffic, short enough that a CA rotating or fixing a broken endpoint gets
- * picked up again without needing a server restart. */
-const CACHE_TTL_MS = 60 * 60 * 1000;
+/** CA intermediate certs are practically static (validity spans years) and
+ * every use still goes through the real signature check -- a day keeps cold
+ * misses (and the network hiccups they expose) rare, while a CA rotating or
+ * fixing a broken endpoint is still picked up within a day. An expired entry
+ * is kept as a stale fallback (`getStaleAiaCerts`) for when a fresh fetch
+ * fails, so one transient error can't break an otherwise valid chain. */
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** Bounds memory without needing a background sweep/timer -- oldest entry is
  * evicted once the cache is full, relying on `Map`'s insertion order. */
@@ -39,14 +41,17 @@ const MAX_CACHE_ENTRIES = 200;
 
 const cache = new Map<string, CacheEntry>();
 
+/** Fresh entries only. An expired entry is NOT deleted -- it stays available
+ * to `getStaleAiaCerts` until it is refreshed or evicted. */
 export function getCachedAiaCerts(url: string): forge.pki.Certificate[] | null {
   const entry = cache.get(url);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    cache.delete(url);
-    return null;
-  }
+  if (!entry || Date.now() > entry.expiresAt) return null;
   return entry.certs;
+}
+
+/** Any entry, expired or not -- only for when a fresh fetch just failed. */
+export function getStaleAiaCerts(url: string): forge.pki.Certificate[] | null {
+  return cache.get(url)?.certs ?? null;
 }
 
 export function setCachedAiaCerts(url: string, certs: forge.pki.Certificate[]): void {
@@ -55,6 +60,7 @@ export function setCachedAiaCerts(url: string, certs: forge.pki.Certificate[]): 
     const oldestKey = cache.keys().next().value;
     if (oldestKey !== undefined) cache.delete(oldestKey);
   }
+  cache.delete(url); // re-insert: a refreshed entry counts as the newest for eviction
   cache.set(url, { certs, expiresAt: Date.now() + CACHE_TTL_MS });
 }
 

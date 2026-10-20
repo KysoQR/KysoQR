@@ -98,7 +98,7 @@ Hai luồng độc lập, cùng một repo, server hoàn toàn stateless (không
 - **Ký số** (CAS-driven) — `POST /api/sign/request` gửi tài liệu + vị trí chữ ký sang CAS → poll `GET /api/sign/status` → khi hoàn tất, tải bản đã ký về qua `GET /api/sign/download`. Trạng thái phiên ký chỉ tồn tại ở `localStorage` của trình duyệt.
 - **Xác minh** (document-driven) — `POST /api/verify/upload` xác minh chữ ký số thật (chữ ký + chain + trust anchor), độc lập hoàn toàn với CAS/database. `GET /api/verify/signing-round/[orgIdSigned]` là tra cứu nhanh qua CAS cho tiện, không thay thế cho verify-by-upload.
 - CAS được trừu tượng hoá qua một interface `CasProvider`, hiện có 1 implementation thật (`CasEsignProvider`) — gọi thẳng API CAS e-signing, không có chế độ giả lập.
-- Tài liệu API: xem tương tác tại `/docs` khi chạy app (file OpenAPI ở [public/openapi/](public/openapi/)).
+- Tài liệu API: xem tương tác tại `/api/` khi chạy app (file OpenAPI ở [public/openapi/](public/openapi/)).
 
 ## Cách chạy dự án
 
@@ -169,4 +169,4 @@ CAS_ESIGN_CLIENT_ID=trial-vendor-47de-86e8-7342f311028c
 CAS_ESIGN_API_KEY=a0e6d612-b34e-11f1-a10d-02cf4c5ff398
 ```
 
-Lưu ý: đây là các key **trial** dùng chung để bạn dùng thử ngay. Nếu muốn sử dụng để ký thật hằng ngày hoặc đóng gói thành sản phẩm production, cần truy cập trang https://cas.so/ hoặc liên hệ sđt 0961580977 để được cấp key riêng.
+Lưu ý: đây là các key **trial** dùng chung để bạn dùng thử ngay. Nếu muốn sử dụng để ký thật hằng ngày hoặc đóng gói thành sản phẩm production, cần truy cập trang https://cas.so/ để được cấp key riêng.

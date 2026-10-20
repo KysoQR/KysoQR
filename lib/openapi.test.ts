@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 /**
- * Keeps `public/openapi/{vi,en}.yaml` (served at /docs) in sync with the real
+ * Keeps `public/openapi/{vi,en}.yaml` (served at /api) in sync with the real
  * route handlers: an API change that forgets the spec fails here, not in
  * front of an integrator. Routes are discovered from `app/api/**\/route.ts`;
  * each route's error codes are read straight from its source and compared

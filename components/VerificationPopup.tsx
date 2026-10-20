@@ -7,7 +7,7 @@ import { Icon } from '@iconify/react';
 /**
  * Shared popup shell for showing a verification/signing-round result in
  * place, without navigating to a separate page -- used by both
- * `HomeLanding.tsx` (upload-to-verify, lookup-by-code) and
+ * `VerifyDocumentPage.tsx` (lookup-by-code) and
  * `SigningWizard.tsx` ("Xem xác minh" on the Done step). Modeled on
  * `DownloadReminderModal.tsx`'s shell (backdrop, `role="dialog"`,
  * Escape-to-close), plus a visible close button and scrollable content since

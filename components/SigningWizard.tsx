@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import Header from '@/components/Header';
@@ -53,7 +54,12 @@ import Footer from './Footer';
  */
 
 type Step = 'upload' | 'scan' | 'done';
-const STEP_ORDER: Step[] = ['upload', 'scan', 'done'];
+
+/** The 4 steps the home page shows (same i18n keys, so they always match):
+ * upload -> place the signature -> scan the QR -> get the signed PDF. The
+ * internal `Step` stays 3-valued; the 'upload' step is shown as step 1
+ * until a file is loaded, then as step 2 (placement). */
+const DISPLAY_STEP_KEYS = ['upload', 'place', 'sign', 'download'] as const;
 
 /**
  * The 3 form/PDF/history columns "anchor" via `position: sticky; top:
@@ -359,6 +365,17 @@ export function SigningWizard({
   const signaturePlacementRef = useRef<SignaturePlacementHandle>(null);
   const [placementVisiblePage, setPlacementVisiblePage] = useState(1);
   const [placementPageCount, setPlacementPageCount] = useState<number | null>(null);
+  /** What's typed in the toolbar's page box while it has focus (`null` = not
+   * editing, show the visible page). Keeps the box editable -- it used to be
+   * bound straight to the visible page, so every keystroke snapped back. */
+  const [pageInputDraft, setPageInputDraft] = useState<string | null>(null);
+  const commitPageInput = () => {
+    const value = Number(pageInputDraft);
+    if (pageInputDraft && Number.isFinite(value) && value >= 1) {
+      signaturePlacementRef.current?.goToPage(value);
+    }
+    setPageInputDraft(null);
+  };
   const [placementZoomFactor, setPlacementZoomFactor] = useState(1);
   const [placementCanAddField, setPlacementCanAddField] = useState(false);
 
@@ -409,13 +426,9 @@ export function SigningWizard({
    * the toolbar can show a "verifying" spinner instead of nothing. */
   const [checkingSignatures, setCheckingSignatures] = useState(false);
 
-  const currentStepIndex = STEP_ORDER.indexOf(step);
+  const currentStepIndex = step === 'done' ? 3 : step === 'scan' ? 2 : file ? 1 : 0;
   const steps = useMemo(
-    () => [
-      { key: 'upload', label: t('steps.uploadRequest') },
-      { key: 'scan', label: t('steps.scan') },
-      { key: 'done', label: t('steps.done') },
-    ],
+    () => DISPLAY_STEP_KEYS.map((key) => ({ key, label: t(`home.steps.${key}.title`) })),
     [t]
   );
   const progressLabel = t('steps.progressLabel', {
@@ -1031,15 +1044,28 @@ export function SigningWizard({
                     primary actions) read as green/highlighted; page-nav/zoom
                     stay small/secondary. */}
                 <div className="flex items-center gap-1.5 rounded-full border border-border-subtle bg-white px-2 py-1 text-xs text-text-secondary shadow-sm">
+                  {/* Typing only edits a local draft; Enter/blur jumps
+                      (out-of-range numbers are clamped by goToPage), Esc
+                      cancels. */}
                   <input
-                    type="number"
-                    step={1}
-                    min={1}
-                    max={placementPageCount ?? undefined}
-                    value={placementVisiblePage}
-                    onChange={(e) => {
-                      const value = e.currentTarget.valueAsNumber;
-                      if (Number.isFinite(value)) signaturePlacementRef.current?.goToPage(value);
+                    type="text"
+                    inputMode="numeric"
+                    value={pageInputDraft ?? String(placementVisiblePage)}
+                    onFocus={(e) => {
+                      setPageInputDraft(String(placementVisiblePage));
+                      e.currentTarget.select();
+                    }}
+                    onChange={(e) => setPageInputDraft(e.currentTarget.value.replace(/\D/g, ''))}
+                    onBlur={commitPageInput}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      } else if (e.key === 'Escape') {
+                        const input = e.currentTarget;
+                        setPageInputDraft(null);
+                        // Blur after the draft is dropped, so onBlur commits nothing.
+                        requestAnimationFrame(() => input.blur());
+                      }
                     }}
                     aria-label={t('common.page')}
                     className="w-8 rounded-full bg-surface-soft px-1 text-center text-xs text-text-main outline-none [appearance:textfield] focus:ring-2 focus:ring-primary/40 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
@@ -1115,8 +1141,8 @@ export function SigningWizard({
             <section className="mb-4 mt-2 flex flex-col">
               <SigningCard className="flex flex-1 flex-col">
                 <SigningStepHeader
-                  stepNumber={1}
-                  title={t('upload.title')}
+                  stepNumber={currentStepIndex + 1}
+                  title={steps[currentStepIndex]!.label}
                   trailingContent={progressLabel}
                 />
                 <div className={`mt-4 grid gap-6 ${gridColsClassName}`}>
@@ -1163,6 +1189,7 @@ export function SigningWizard({
                         onPageCountChange={setPlacementPageCount}
                         onZoomFactorChange={setPlacementZoomFactor}
                         onCanAddFieldChange={setPlacementCanAddField}
+                        topInset={stickyOffset}
                       />
                     ) : (
                       <div className="mx-auto flex min-h-[360px] w-full flex-col items-center justify-center rounded-xl border border-border-subtle bg-surface-soft px-4 py-8 text-center">
@@ -1346,7 +1373,7 @@ export function SigningWizard({
               >
                 <SigningCard className="flex flex-col">
                   <SigningStepHeader
-                    stepNumber={2}
+                    stepNumber={3}
                     title={t('scan.title')}
                     trailingContent={progressLabel}
                   />
@@ -1484,7 +1511,7 @@ export function SigningWizard({
           )}
 
           {step === 'done' && (
-            <section className="mb-6">
+            <section>
               <SigningCard>
                 {/* Custom 3-slot header row (title / centered buttons /
                       progress label) instead of SigningStepHeader's plain
@@ -1493,7 +1520,7 @@ export function SigningWizard({
                       far right, it can't center it in the remaining space.
                       Mirrors the same left/center/right pattern already used
                       for the site Header's logo/steps/right-controls row.
-                      The 4 action buttons (+ "Bước 3/3") share this row
+                      The 4 action buttons (+ "Bước 4/4") share this row
                       instead of their own separate rows underneath -- see
                       the PDF-preview height right below, which grows into
                       the space reclaimed here. Plain <button> markup (not
@@ -1506,7 +1533,7 @@ export function SigningWizard({
                 <div className="mb-4 flex flex-wrap items-center gap-2">
                   <h2 className="flex shrink-0 items-center gap-2 text-base font-semibold text-primary-strong sm:text-lg">
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white">
-                      3
+                      4
                     </span>
                     <span>{t('done.title')}</span>
                   </h2>
@@ -1598,10 +1625,22 @@ export function SigningWizard({
                       ) : (
                         signedPdfUrl && (
                           <div className="rounded-xl border border-gray-200 bg-gray-50 p-2 sm:p-3">
+                            {/* On lg+, viewport minus the measured sticky
+                                header minus everything from this wrapper's
+                                top edge to the page bottom: 4.25rem = this
+                                wrapper's `sm:p-3` top + bottom (1.5rem) +
+                                the card's `sm:p-6` bottom (1.5rem) + <main>'s
+                                `sm:py-5` bottom (1.25rem). Subtracting less
+                                lets the page scroll the PDF viewer's own
+                                toolbar (zoom etc.) under the sticky header,
+                                out of reach -- update this if those paddings
+                                change. Passed as a CSS var so it still only
+                                applies from `lg` up. */}
                             <iframe
                               src={signedPdfUrl}
                               title={t('done.signedPdfTitle')}
-                              className="h-[65vh] w-full rounded-lg bg-white lg:h-[calc(100vh-18rem)]"
+                              style={{ '--sticky-offset': `${stickyOffset}px` } as CSSProperties}
+                              className="h-[65vh] w-full rounded-lg bg-white lg:h-[calc(100svh-var(--sticky-offset)-4.25rem)]"
                             />
                           </div>
                         )
@@ -1625,11 +1664,12 @@ export function SigningWizard({
         </div>
       </main>
 
-      {/* Same full-width footer as the landing page, on the scan and done
-          steps. Not on "upload": that step is a PDF workspace whose sticky
-          columns are sized to the viewport. The Casso brand band stays on
-          the landing page only. */}
-      {step !== 'upload' && (
+      {/* Same full-width footer as the landing page, on the scan step only.
+          Not on "upload": that step is a PDF workspace whose sticky columns
+          are sized to the viewport. Not on "done" either: that step gives
+          all its room to the signed-PDF preview. The Casso brand band stays
+          on the landing page only. */}
+      {step === 'scan' && (
         <div className="border-t border-border-subtle bg-white">
           <Footer />
         </div>

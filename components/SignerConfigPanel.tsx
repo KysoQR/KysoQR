@@ -90,7 +90,11 @@ export function SignerConfigPanel({
         {/* One prominent line instead of a faint "Tuỳ chọn" badge on every
             field: individuals may leave everything empty (QR-only), while an
             enterprise signer must provide a tax code. */}
-        <p className="mt-1.5 flex items-start gap-1 text-xs text-error-text">
+        <p
+          className={`mt-1.5 flex items-start gap-1 text-xs ${
+            isEnterprise ? 'text-error-text' : 'text-primary-strong'
+          }`}
+        >
           <Icon icon="lucide:info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             {t(

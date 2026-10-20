@@ -4,9 +4,7 @@
     "promo": "Secure digital signing for your documents"
   },
   "home": {
-    "eyebrow": "KysoQR",
     "title": "Sign a contract in one drag-and-drop.",
-    "subtitle": "KysoQR is a QR-based digital document signing service: upload a PDF, approve the signing request in the Cas ID app, and get back a validly signed PDF anyone can verify by its signing code or by uploading the file.",
     "instruction2": "Supports {{formats}} (Max {{maxSize}}MB)",
     "steps": {
       "upload": {
@@ -14,21 +12,20 @@
         "description": "Up to 10 MB. Files are held temporarily and deleted after 24 hours."
       },
       "place": {
-        "title": "Place your signature, then confirm in the Cas ID app",
-        "description": "Scan the QR code or receive a push notification in the Cas ID app to approve the signing request — a PAdES digital signature with a timestamp from a licensed CA."
+        "title": "Place the signature",
+        "description": "Review the document, place the signature, and optionally enter the signer's details."
+      },
+      "sign": {
+        "title": "Sign in the Cas ID app",
+        "description": "The signer reviews the document and approves the signing request."
       },
       "download": {
         "title": "Get back a validly signed PDF",
         "description": "Anyone can verify it anytime using the signing code printed on the file, or by uploading the PDF itself."
       }
     },
-    "tags": {
-      "invoices": "Invoices & contracts",
-      "reconciliation": "Reconciliation reports",
-      "hr": "HR records"
-    },
     "signCard": {
-      "title": "Sign or verify a signature now, no login needed",
+      "title": "Sign a document now, no login needed",
       "badge": "1 file / session",
       "dropzoneTitle": "Drop your PDF here",
       "dropzoneSubtitle": "or choose a file from your device to start signing"
@@ -37,8 +34,12 @@
     "githubStars_one": "{{count}} star",
     "githubStars_other": "{{count}} stars",
     "supportedSignatures": {
-      "sign": { "summary": "Sign with a remote digital signature in the Cas ID app" },
-      "verify": { "summary": "Verifies USB token, HSM / remote, and SIM PKI signatures" }
+      "sign": {
+        "summary": "Sign with a remote digital signature in the Cas ID app"
+      },
+      "verify": {
+        "summary": "Verifies USB token, HSM / remote, and SIM PKI signatures"
+      }
     },
     "intent": {
       "sign": "Sign a document",
@@ -80,10 +81,103 @@
     }
   },
   "nav": {
-    "docs": "Docs",
-    "api": "API",
-    "letter": "CEO Letter",
+    "whyKicker": "Why",
+    "whyLabel": "QR signing",
+    "openSourceKicker": "Signing",
+    "openSourceLabel": "Open source",
+    "apiKicker": "API",
+    "apiLabel": "Bulk signing",
+    "verifyKicker": "Verify",
+    "verifyLabel": "Signed documents",
     "comingSoon": "Coming soon"
+  },
+  "verifyPage": {
+    "title": "Verify a signed document",
+    "lead": "Two ways to check a signed file: look up a QR-signing session with the code printed on the document, or upload the PDF to check the signature against the certificate chain up to the national Root CA.",
+    "session": {
+      "kicker": "QR signing",
+      "description": "For documents signed with QR signing. Enter the signing-round code printed on the file to see who signed, when, and on which device."
+    },
+    "chain": {
+      "kicker": "Certificate chain",
+      "title": "Verify against the national Root CA",
+      "description": "For any PDF signed with a valid digital certificate, including USB tokens, HSMs, and SIM PKI. Upload the file to check the signature and trace the certificate chain back to Vietnam's Root CA.",
+      "dropzoneTitle": "Drop a signed PDF here",
+      "dropzoneSubtitle": "or choose a file from your device to verify"
+    },
+    "explain": {
+      "eyebrow": "How a digital signature is checked",
+      "title": "Trace the certificate chain back to the national Root CA",
+      "intro": "A digital signature on a PDF is not a picture of a signature. It is the signer's digital certificate, bound to the file contents by cryptography. To decide whether that signature is trustworthy, the system traces the certificate chain back to a root the state recognizes.",
+      "steps": {
+        "read": {
+          "title": "Read the signature inside the PDF",
+          "description": "A signed file contains one or more digital signatures. Each one names the byte range that was signed, together with the signer's certificate."
+        },
+        "signature": {
+          "title": "Check the signature against the signer's key",
+          "description": "The signature is checked with the public key on the signer's certificate. If it does not match, the signature is invalid, even if a signature image is still visible on the page."
+        },
+        "content": {
+          "title": "Check that the content is intact",
+          "description": "The system compares the signed byte range with the value that was signed. If the file was changed after signing, the result is that the content was modified."
+        },
+        "chain": {
+          "title": "Trace the certificate chain back",
+          "description": "The signer's certificate was issued by a certification authority (CA). That CA may itself have been issued by a higher CA. The chain runs from the signer, through intermediate CAs, to a root certificate."
+        },
+        "root": {
+          "title": "Match the national Root CA",
+          "description": "The chain is trusted only when the root is a Vietnam Root CA published by NEAC at rootca.gov.vn (Ministry of Information and Communications). KysoQR uses the SHA-256 generation G2 and G3 roots. A matching provider name is not enough: each link must be signed by the certificate above it, with that certificate's own key."
+        },
+        "time": {
+          "title": "Judge it at signing time",
+          "description": "The result is judged at the time of signing, not at the moment you open this page. A certificate that expires after the signing date does not make that signature fake."
+        }
+      },
+      "note": "Looking up a signing round is a different check: it asks KysoQR about that QR-signing session. Tracing the certificate chain back applies to any PDF signed with a digital certificate, and does not need a session code."
+    }
+  },
+  "openSourcePage": {
+    "title": "Open-source signing",
+    "lead": "Run KysoQR on your own machine, sign a document with Cas ID, then switch to your own key when you use it for real.",
+    "tocLabel": "Contents",
+    "toc": {
+      "quick": "Quick start",
+      "local": "Run locally",
+      "pm2": "Deploy with pm2",
+      "worker": "Deploy on Cloudflare Workers",
+      "sign": "Sign a document",
+      "production": "Production rollout",
+      "vendor": "Register as a Cas vendor",
+      "app": "Create an app and update env"
+    },
+    "quickBody": "No database. You need Node.js 22 or newer. Three ways to run it: on your machine, on a VPS with pm2, or on Cloudflare Workers.",
+    "localIntro": "Use this while you are changing the code, or to try a signature on your own computer.",
+    "gitPullBody": "If you do not have the source yet, clone it and then pull the latest commit. If the repo folder is already there, stay in that folder and only run git pull.",
+    "npmCiBody": "Install the exact dependency versions locked in package-lock.json.",
+    "envBody": "Copy the example file and fill in the shared trial key. That key is for trying the app — not for signing real documents every day.",
+    "envNote": "Signature verification works even before you fill in env. Signing needs all three variables.",
+    "runBody": "Open the address below in a browser. Stop the server with Ctrl+C in the terminal that is running it.",
+    "pm2Body": "On a VPS, install dependencies and fill in .env the same way as a local run, then build the production app and let pm2 keep the process alive. pm2 startup prints a sudo command — run that exact line so the app comes back after a reboot.",
+    "pm2Note": "npm run start is next start, listening on port 3000. Put Nginx or Caddy in front of it when you need HTTPS.",
+    "workerBody": "Connect the repo to Cloudflare Workers Builds. Enter these two commands once, and leave the root directory as /.",
+    "workerBuild": "Build command",
+    "workerDeploy": "Deploy command",
+    "workerEnv": "Put the three CAS_ESIGN_* variables under Settings → Runtime → Variables and secrets. Do not put them under Builds — the running Worker does not read values from that tab. Each push to the connected branch builds and deploys again.",
+    "workerLocal": "To try the Worker build on your machine before you push:",
+    "signIntro": "KysoQR does not hold the signing key. The signer approves the request in the Cas ID app.",
+    "signSteps": {
+      "download": "Install the Cas ID app from the App Store or Google Play.",
+      "register": "In the app, register a digital signature. Follow the guide at",
+      "registerLink": "cas.so/cas-id/chu-ky-so/",
+      "do": "On KysoQR, upload a PDF, place the signature, and click sign. Scan the QR code with Cas ID, or accept the in-app notification if you already entered the national ID number. Approve the request, then download the signed PDF."
+    },
+    "productionIntro": "The trial key is only for trying the app. When you sign real documents, or ship KysoQR inside a product, use your own key.",
+    "vendorBody": "Register as a Cas vendor at",
+    "vendorLink": "cas.so/",
+    "appBody": "In the vendor account, create an App. Copy its client id and api key, then replace these two lines in .env (leave CAS_ESIGN_BASE_URL as it is):",
+    "appWorker": "If the app runs on Cloudflare, change these two variables under Runtime and deploy again."
   },
   "footer": {
     "title1": "Internationally standard security",
@@ -97,9 +191,6 @@
     "scan": "No digital signature yet? Scroll down to register"
   },
   "steps": {
-    "uploadRequest": "Upload PDF & request permission",
-    "scan": "Scan QR",
-    "done": "Signed document",
     "progressLabel": "Step {{current}} of {{total}}",
     "ariaProgress": "Signing progress",
     "helperUploadRequest": "Start by uploading your PDF and preparing the signing request.",
@@ -134,7 +225,10 @@
   },
   "signerConfig": {
     "signerKindLabel": "Who is signing?",
-    "signerKind": { "individual": "Individual", "enterprise": "Business" },
+    "signerKind": {
+      "individual": "Individual",
+      "enterprise": "Business"
+    },
     "cccdLabel": "Citizen ID (CCCD)",
     "optionalNotice": "Enter details to send the signing request to Cas ID.",
     "enterpriseTaxCodeRequired": "A tax code (MST) is required to sign as an enterprise.",
@@ -189,7 +283,9 @@
     "copyLink": "Copy link",
     "copied": "Copied!",
     "tip": "Open Cas ID to scan the QR for signing permission, or tap the notification sent to your Cas ID app. No CAS ID yet? Watch the registration video below.",
-    "aria": { "qrCode": "QR code" }
+    "aria": {
+      "qrCode": "QR code"
+    }
   },
   "sign": {
     "needUploadForPreview": "Upload a PDF to preview and place the signature.",
@@ -338,7 +434,8 @@
   "signatureHistory": {
     "title": "Signature history",
     "subtitle_one": "This document already has {{count}} existing digital signature.",
-    "subtitle_other": "This document already has {{count}} existing digital signatures.",    "closeAriaLabel": "Close signature history",
+    "subtitle_other": "This document already has {{count}} existing digital signatures.",
+    "closeAriaLabel": "Close signature history",
     "chain": {
       "title": "Certificate chain",
       "ca": "Issuing CA",

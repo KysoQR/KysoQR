@@ -11,7 +11,15 @@ import {
   useRef,
   useState,
 } from 'react';
-import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from 'pdfjs-dist';
+// pdf.js "legacy" build (library + worker below): the default build touches
+// the global `Iterator` at load time, which Safari/iOS < 18.4 (and every
+// in-app browser on those iPhones) doesn't have -- that crashed the whole
+// page. The legacy build ships the needed polyfills.
+import {
+  GlobalWorkerOptions,
+  getDocument,
+  type PDFDocumentProxy,
+} from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import {
@@ -25,7 +33,7 @@ import {
 
 if (!GlobalWorkerOptions.workerSrc) {
   GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
+    'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
     import.meta.url
   ).toString();
 }
@@ -69,6 +77,10 @@ type SignaturePlacementProps = {
   onPageCountChange?: (count: number | null) => void;
   onZoomFactorChange?: (zoom: number) => void;
   onCanAddFieldChange?: (canAdd: boolean) => void;
+  /** Height (px) of whatever sticks to the top of the viewport above the
+   * pages (the wizard's header + toolbar). Excluded when deciding which page
+   * is "visible", and used as the offset when jumping to a page. */
+  topInset?: number;
 };
 
 export type SignaturePlacementHandle = {
@@ -98,6 +110,7 @@ function SignaturePlacementInner(
     onPageCountChange,
     onZoomFactorChange,
     onCanAddFieldChange,
+    topInset = 0,
   }: SignaturePlacementProps,
   ref: React.Ref<SignaturePlacementHandle>
 ) {
@@ -110,7 +123,6 @@ function SignaturePlacementInner(
   const renderTasksRef = useRef(new Map<number, PdfRenderTask>());
   const renderCallIdsRef = useRef(new Map<number, number>());
   const renderedPagesRef = useRef(new Set<number>());
-  const visibilityRatiosRef = useRef(new Map<number, number>());
   const suppressClickUntilRef = useRef(0);
   const endGestureRef = useRef<(() => void) | null>(null);
   const zoomFactorRef = useRef(0.8);
@@ -245,7 +257,6 @@ function SignaturePlacementInner(
       overlayRefs.current.clear();
       pageWrapperRefs.current.clear();
       renderedPagesRef.current.clear();
-      visibilityRatiosRef.current.clear();
       try {
         const data = await file.arrayBuffer();
         void pdfRef.current?.cleanup();
@@ -289,8 +300,9 @@ function SignaturePlacementInner(
     };
   }, [file]);
 
-  // Lazy-render pages as they scroll near the viewport, and track which page
-  // is most visible (drives the page readout + "Thêm ô chữ ký" target).
+  // Lazy-render pages as they scroll near the viewport. `root: null`
+  // (viewport) -- the stage doesn't scroll vertically itself, the page does
+  // (see SigningWizard.tsx's single page scroll).
   useEffect(() => {
     if (!stageRef.current || !pageCount) return;
     const observer = new IntersectionObserver(
@@ -298,31 +310,62 @@ function SignaturePlacementInner(
         for (const entry of entries) {
           const pageNumber = Number((entry.target as HTMLElement).dataset.page);
           if (!pageNumber) continue;
-          visibilityRatiosRef.current.set(pageNumber, entry.intersectionRatio);
           if (entry.isIntersecting && !renderedPagesRef.current.has(pageNumber)) {
             renderedPagesRef.current.add(pageNumber);
             renderPage(pageNumber);
           }
         }
-        let bestPage = 0;
-        let bestRatio = 0;
-        for (const [pageNumber, ratio] of visibilityRatiosRef.current) {
-          if (ratio > bestRatio) {
-            bestRatio = ratio;
-            bestPage = pageNumber;
-          }
-        }
-        if (bestPage > 0) {
-          setVisiblePage((current) => (current === bestPage ? current : bestPage));
-        }
       },
-      // `root: null` (viewport) -- the stage no longer scrolls internally,
-      // the page itself does (see SigningWizard.tsx's single page scroll).
-      { root: null, rootMargin: RENDER_ROOT_MARGIN, threshold: [0, 0.25, 0.5, 0.75, 1] }
+      { root: null, rootMargin: RENDER_ROOT_MARGIN }
     );
     for (const el of pageWrapperRefs.current.values()) observer.observe(el);
     return () => observer.disconnect();
   }, [pageCount, renderPage]);
+
+  // Which page is "visible" (drives the page readout + the "Chọn vị trí ký"
+  // target page). Measured against the REAL visible area -- below the sticky
+  // header/toolbar, inside the window. It used to reuse the lazy-render
+  // observer above, whose 800px rootMargin made every short (landscape) page
+  // count as 100% visible, so page 1 always won and the last page could
+  // never become the current one.
+  useEffect(() => {
+    if (!pageCount) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const viewTop = topInset;
+      const viewBottom = window.innerHeight;
+      // Scrolled all the way down: the last page that shows at all is the
+      // one being looked at, even if it can't fill most of the screen.
+      const atBottom =
+        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      let bestPage = 0;
+      let bestVisible = 0;
+      for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+        const el = pageWrapperRefs.current.get(pageNumber);
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        const visible = Math.min(rect.bottom, viewBottom) - Math.max(rect.top, viewTop);
+        if (visible <= 0) continue;
+        if (atBottom || visible > bestVisible) {
+          bestVisible = visible;
+          bestPage = pageNumber;
+        }
+      }
+      if (bestPage > 0) setVisiblePage((current) => (current === bestPage ? current : bestPage));
+    };
+    const schedule = () => {
+      if (!frame) frame = window.requestAnimationFrame(update);
+    };
+    schedule();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [pageCount, pageMetrics, zoomFactor, topInset]);
 
   // The render scale is derived from container width (see renderPage above),
   // so already-rendered pages need re-rasterizing when the container resizes.
@@ -532,9 +575,15 @@ function SignaturePlacementInner(
     (pageNumber: number) => {
       if (!pageCount) return;
       const safe = clamp(Math.trunc(pageNumber), 1, pageCount);
-      pageWrapperRefs.current.get(safe)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const el = pageWrapperRefs.current.get(safe);
+      if (!el) return;
+      // Window scroll (not scrollIntoView) so the page top lands just below
+      // the sticky header/toolbar instead of underneath it, and the stage's
+      // own horizontal scroll position is left alone.
+      const top = el.getBoundingClientRect().top + window.scrollY - topInset - 8;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
     },
-    [pageCount]
+    [pageCount, topInset]
   );
 
   const zoomOut = useCallback(() => {
@@ -616,7 +665,10 @@ function SignaturePlacementInner(
         // between pages (matches the convention most PDF viewers use). No
         // longer scroll-contained -- grows to its natural height and scrolls
         // along with the page (see SigningWizard.tsx's single page scroll).
-        className="relative mx-auto w-full max-w-none space-y-4 rounded-md border border-gray-700 bg-neutral-900 p-2"
+        // `overflow-x-auto`: zoomed past 100% a page is wider than the stage;
+        // scroll it sideways here instead of letting it spill over the
+        // signer column next to it (it used to, from ~150% zoom up).
+        className="relative mx-auto w-full max-w-none space-y-4 overflow-x-auto rounded-md border border-gray-700 bg-neutral-900 p-2"
       >
         {pageNumbers.map((pageNumber) => (
           <PdfPageBlock

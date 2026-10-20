@@ -1,6 +1,11 @@
 import forge from 'node-forge';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getCachedAiaCerts, resetAiaCertCacheForTests, setCachedAiaCerts } from './aiaCertCache';
+import {
+  getCachedAiaCerts,
+  getStaleAiaCerts,
+  resetAiaCertCacheForTests,
+  setCachedAiaCerts,
+} from './aiaCertCache';
 
 function fakeCert(commonName: string): forge.pki.Certificate {
   const keys = forge.pki.rsa.generateKeyPair(512); // tiny key -- these tests never verify signatures
@@ -43,17 +48,26 @@ describe('aiaCertCache', () => {
     expect(getCachedAiaCerts('https://example.test/empty.cer')).toBeNull();
   });
 
-  it('expires an entry once its TTL has passed', () => {
+  it('expires an entry after 24h but keeps it as a stale fallback until refreshed', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     setCachedAiaCerts('https://example.test/ttl.cer', [fakeCert('TTL Test')]);
     expect(getCachedAiaCerts('https://example.test/ttl.cer')).toHaveLength(1);
 
-    vi.setSystemTime(new Date('2026-01-01T00:59:00Z')); // 59 minutes later -- still within the 1h TTL
+    vi.setSystemTime(new Date('2026-01-01T23:59:00Z')); // 23h59 later -- still within the 24h TTL
     expect(getCachedAiaCerts('https://example.test/ttl.cer')).toHaveLength(1);
 
-    vi.setSystemTime(new Date('2026-01-01T01:01:00Z')); // 61 minutes later -- past the 1h TTL
+    vi.setSystemTime(new Date('2026-01-02T00:01:00Z')); // past the 24h TTL
     expect(getCachedAiaCerts('https://example.test/ttl.cer')).toBeNull();
+    // ...but the expired copy is still there for when a fresh fetch fails
+    expect(getStaleAiaCerts('https://example.test/ttl.cer')).toHaveLength(1);
+
+    setCachedAiaCerts('https://example.test/ttl.cer', [fakeCert('TTL Test')]); // refreshed
+    expect(getCachedAiaCerts('https://example.test/ttl.cer')).toHaveLength(1);
+  });
+
+  it('has no stale fallback for a URL that was never cached', () => {
+    expect(getStaleAiaCerts('https://example.test/never-set.cer')).toBeNull();
   });
 
   it('evicts the oldest entry once the cache is full, bounding memory without a background sweep', () => {

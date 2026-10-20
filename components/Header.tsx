@@ -6,23 +6,76 @@ import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from './LanguageSwitcher';
 import { GithubStarsButton } from './GithubStarsButton';
-import { TamThuLabel, TamThuPopup, useTamThuHtml } from './TamThu';
+import { useWhyMenu } from './WhyMenu';
 
-/** External nav targets (e.g. cas.so API docs) open in a new tab. */
-const externalLinkProps = (href: string) =>
-  /^https?:\/\//.test(href) ? { target: '_blank', rel: 'noopener noreferrer' } : {};
+/** `usePathname()` may or may not include the trailing slash depending on the
+ * router, so compare the path without one. */
+function samePath(pathname: string, matchPath: string): boolean {
+  const strip = (path: string) => (path.length > 1 ? path.replace(/\/+$/, '') : path);
+  return strip(pathname) === strip(matchPath);
+}
 
-/** `href: null` = shown but not clickable yet ("coming soon"). The home page
- * (`/`) matches no tab, so nothing is underlined there. */
-const NAV_ITEMS: { key: string; href: string | null; matchPath: string | null; labelKey: string }[] = [
-  { key: 'docs', href: '/docs#description/introduction', matchPath: '/docs', labelKey: 'nav.docs' },
-  { key: 'api', href: 'https://cas.so/general/api/product-esign', matchPath: null, labelKey: 'nav.api' },
+/** Two-line items, same stacking as the Cas ID header: a short kicker on top,
+ * the name in bold underneath. "Vì sao / Ký số QR" is omitted unless the
+ * server has `public/why.html`. `/` matches no item. */
+const NAV_ITEMS: {
+  key: string;
+  href: string;
+  matchPath: string | null;
+  kickerKey: string;
+  labelKey: string;
+}[] = [
+  {
+    key: 'why',
+    href: '/why.html',
+    matchPath: null,
+    kickerKey: 'nav.whyKicker',
+    labelKey: 'nav.whyLabel',
+  },
+  {
+    key: 'opensource',
+    href: '/opensource/',
+    matchPath: '/opensource',
+    kickerKey: 'nav.openSourceKicker',
+    labelKey: 'nav.openSourceLabel',
+  },
+  {
+    key: 'api',
+    href: '/api/',
+    matchPath: '/api',
+    kickerKey: 'nav.apiKicker',
+    labelKey: 'nav.apiLabel',
+  },
+  {
+    key: 'verify',
+    href: '/verify/',
+    matchPath: '/verify',
+    kickerKey: 'nav.verifyKicker',
+    labelKey: 'nav.verifyLabel',
+  },
 ];
 
-/** Simplified port of x-sign-web/src/components/Header.tsx — nav tabs
- * ("Tài liệu" opens the API reference at `/docs`, "API" is a placeholder
- * for now) plus the GitHub/star button on every page, `rightSlot` kept so the
- * home page's "Dùng thử miễn phí" CTA still works exactly like the original.
+function NavLines({
+  kicker,
+  label,
+  align,
+}: {
+  kicker: string;
+  label: string;
+  align: 'center' | 'start';
+}) {
+  return (
+    <span className={`flex flex-col leading-tight ${align === 'center' ? 'items-center' : 'items-start'}`}>
+      <span className="text-[13px] font-medium text-text-secondary">{kicker}</span>
+      <span className="mt-0.5 text-sm font-bold tracking-[-0.02em] text-text-main">{label}</span>
+    </span>
+  );
+}
+
+/** Simplified port of x-sign-web/src/components/Header.tsx — two-line nav
+ * (kicker + bold name), plus the GitHub/star button on every page, `rightSlot`
+ * kept so the home page's "Dùng thử miễn phí" CTA still works exactly like the
+ * original.
  * `centerContent` is a later addition: the signing wizard's step indicator
  * renders inline here (see SigningWizard.tsx) instead of as its own card
  * below the header, to reclaim vertical space. Always laid out as a 3-slot
@@ -57,79 +110,81 @@ export default function Header({
   const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const pathname = usePathname();
-  /** `null` = no tamthu.md in the codebase -> no "Tâm thư" button. */
-  const tamThuHtml = useTamThuHtml();
-  const [isTamThuOpen, setIsTamThuOpen] = useState(false);
+  const showWhy = useWhyMenu();
+  const navItems = NAV_ITEMS.filter((item) => item.key !== 'why' || showWhy);
 
   return (
     <>
-      <header className="border-b border-border-subtle bg-white/95 backdrop-blur">
-        <div className={`mx-auto flex h-16 items-center px-4 sm:px-6 ${maxWidthClassName}`}>
-          <Link href="/" onClick={onLogoClick} className="flex shrink-0 items-center gap-0">
+      <header className="bg-white/95 backdrop-blur">
+        <div
+          className={`mx-auto flex h-[72px] items-center px-4 sm:px-6 lg:grid lg:grid-cols-[1fr_auto_1fr] ${maxWidthClassName}`}
+        >
+          <Link href="/" onClick={onLogoClick} className="flex w-fit shrink-0 items-center justify-self-start gap-0">
             {/* eslint-disable-next-line @next/next/no-img-element -- small static logo image, no optimization needed */}
             <img
               src="/kysoqr-logo.png"
               alt="KysoQR"
-              className="h-7 w-auto object-contain sm:h-9"
+              className="h-[22.4px] w-auto object-contain sm:h-[28.8px]"
             />
           </Link>
 
-          {/* Always rendered (even with no centerContent, or below `lg`) so it
-              keeps soaking up the remaining space between the logo and the
-              right-side controls -- otherwise removing/hiding it would pull
-              the controls back next to the logo instead of the far edge. */}
-          <div className="flex flex-1 items-center justify-center px-2">
-            {centerContent && <div className="hidden lg:flex">{centerContent}</div>}
-          </div>
-
-          <div className="flex shrink-0 items-center justify-end gap-4 sm:gap-16">
-            <nav
-              className="hidden items-stretch gap-4 text-md text-text-secondary sm:flex"
-              aria-label="Primary"
-            >
-              {tamThuHtml && (
-                <button
-                  type="button"
-                  onClick={() => setIsTamThuOpen(true)}
-                  className="-mb-px inline-flex items-center rounded border-b-2 border-transparent px-1.5 pt-1 pb-2 font-semibold outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                >
-                  <TamThuLabel />
-                </button>
-              )}
-              {NAV_ITEMS.map((item) => {
-                if (!item.href) {
+          {/* Wide screens: menu sits in the middle track, so it is centered
+              between the logo and the language cluster. The two `1fr` tracks
+              stay equal, which is what actually centers this group. */}
+          <div className="hidden items-center justify-center gap-4 lg:flex">
+            {centerContent}
+            <nav className="flex items-center gap-1 xl:gap-2" aria-label="Primary">
+              {navItems.map((item) => {
+                const lines = (
+                  <NavLines kicker={t(item.kickerKey)} label={t(item.labelKey)} align="center" />
+                );
+                const active = item.matchPath != null && samePath(pathname, item.matchPath);
+                const itemClass = `rounded-lg px-2 py-1.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 hover:bg-surface-soft ${
+                  active ? 'bg-surface-soft' : ''
+                }`;
+                if (item.key === 'why') {
                   return (
-                    <span
-                      key={item.key}
-                      aria-disabled="true"
-                      title={t('nav.comingSoon')}
-                      className="-mb-px inline-flex cursor-not-allowed items-center border-b-2 border-transparent px-1.5 pt-1 pb-2 font-semibold opacity-50"
-                    >
-                      {t(item.labelKey)}
-                    </span>
+                    <a key={item.key} href={item.href} className={itemClass}>
+                      {lines}
+                    </a>
                   );
                 }
-                const active = pathname === item.matchPath;
                 return (
                   <Link
                     key={item.key}
                     href={item.href}
-                    {...externalLinkProps(item.href)}
                     aria-current={active ? 'page' : undefined}
-                    className={`-mb-px inline-flex items-center border-b-2 px-1.5 pt-1 pb-2 font-semibold transition-colors ${
-                      active
-                        ? 'border-primary text-primary-strong'
-                        : 'border-transparent hover:text-text-main'
-                    }`}
+                    className={itemClass}
                   >
-                    {t(item.labelKey)}
+                    {lines}
                   </Link>
                 );
               })}
             </nav>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center justify-end gap-1 lg:ml-0 lg:justify-self-end lg:gap-6">
+            {showWhy && (
+              <a
+                href="/why.html"
+                className="rounded-lg px-1.5 py-1 outline-none transition-colors hover:bg-surface-soft focus-visible:ring-2 focus-visible:ring-primary/40 lg:hidden"
+              >
+                <NavLines
+                  kicker={t('nav.whyKicker')}
+                  label={t('nav.whyLabel')}
+                  align="center"
+                />
+              </a>
+            )}
+            <div className="flex items-center gap-3.5">
+              <span className="hidden lg:inline-flex">
+                <GithubStarsButton />
+              </span>
+              <LanguageSwitcher />
+              {rightSlot}
+            </div>
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-2 text-text-secondary hover:text-text-main sm:hidden"
+              className="p-2 text-text-secondary hover:text-text-main lg:hidden"
               aria-label="Toggle menu"
             >
               <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -141,11 +196,6 @@ export default function Header({
                 />
               </svg>
             </button>
-            <div className="flex items-center gap-3.5">
-              <LanguageSwitcher />
-              <GithubStarsButton />
-              {rightSlot}
-            </div>
           </div>
         </div>
       </header>
@@ -153,10 +203,10 @@ export default function Header({
       {isMenuOpen && (
         <>
           <div
-            className="menu-fade-in fixed inset-0 z-40 h-full w-full bg-black/30 sm:hidden"
+            className="menu-fade-in fixed inset-0 z-40 h-full w-full bg-black/30 lg:hidden"
             onClick={() => setIsMenuOpen(false)}
           />
-          <div className="fixed left-0 top-0 z-50 flex w-full flex-col sm:hidden">
+          <div className="fixed left-0 top-0 z-50 flex w-full flex-col lg:hidden">
             <div className="menu-fade-in border-t border-border-subtle bg-white">
               <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
                 <span className="text-xl font-bold tracking-tight text-[#16A34A]">KysoQR</span>
@@ -175,56 +225,39 @@ export default function Header({
                   </svg>
                 </button>
               </div>
-              <nav className="flex flex-col gap-0 px-4 py-4 text-md font-semibold text-text-secondary">
-                {tamThuHtml && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      setIsTamThuOpen(true);
-                    }}
-                    className="rounded px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                  >
-                    <TamThuLabel />
-                  </button>
-                )}
-                {NAV_ITEMS.map((item) =>
-                  item.href ? (
+              <nav className="flex flex-col gap-1 px-4 py-4">
+                {navItems.map((item) => {
+                  const lines = (
+                    <NavLines kicker={t(item.kickerKey)} label={t(item.labelKey)} align="start" />
+                  );
+                  const active = item.matchPath != null && samePath(pathname, item.matchPath);
+                  const itemClass = `rounded-lg px-3 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 hover:bg-surface-soft ${
+                    active ? 'bg-surface-soft' : ''
+                  }`;
+                  if (item.key === 'why') {
+                    return (
+                      <a key={item.key} href={item.href} className={itemClass}>
+                        {lines}
+                      </a>
+                    );
+                  }
+                  return (
                     <Link
                       key={item.key}
                       href={item.href}
-                      {...externalLinkProps(item.href)}
                       onClick={() => setIsMenuOpen(false)}
-                      className={`rounded px-4 py-3 ${
-                        pathname === item.matchPath
-                          ? 'bg-surface-soft text-primary-strong'
-                          : 'hover:text-text-main'
-                      }`}
+                      className={itemClass}
                     >
-                      {t(item.labelKey)}
+                      {lines}
                     </Link>
-                  ) : (
-                    <span
-                      key={item.key}
-                      aria-disabled="true"
-                      title={t('nav.comingSoon')}
-                      className="cursor-not-allowed rounded px-4 py-3 opacity-50"
-                    >
-                      {t(item.labelKey)}
-                    </span>
-                  )
-                )}
+                  );
+                })}
               </nav>
             </div>
           </div>
         </>
       )}
 
-      {/* Rendered here, not inside the mobile menu, so closing the menu on
-          click doesn't unmount the popup it just opened. */}
-      {tamThuHtml && isTamThuOpen && (
-        <TamThuPopup html={tamThuHtml} onClose={() => setIsTamThuOpen(false)} />
-      )}
     </>
   );
 }

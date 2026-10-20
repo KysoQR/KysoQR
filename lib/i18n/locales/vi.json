@@ -4,9 +4,7 @@
     "promo": "Ký số an toàn cho tài liệu của bạn"
   },
   "home": {
-    "eyebrow": "KysoQR",
-    "title": "Hợp đồng ký xong trong một lần kéo thả.",
-    "subtitle": "KysoQR là dịch vụ ký số tài liệu qua mã QR: tải PDF lên, xác nhận yêu cầu ký ngay trên app Cas ID, nhận lại tệp PDF đã ký hợp lệ mà ai cũng có thể xác minh bằng mã phiên ký hoặc bằng cách tải tệp lên kiểm tra.",
+    "title": "Ký số đơn giản, dễ hiểu như ký tay",
     "instruction2": "Hỗ trợ {{formats}} (Tối đa {{maxSize}}MB)",
     "steps": {
       "upload": {
@@ -14,21 +12,20 @@
         "description": "Tối đa 10 MB. Tệp nằm trong bộ nhớ tạm, xoá sau 24 giờ."
       },
       "place": {
-        "title": "Đặt vị trí chữ ký, rồi xác nhận trên app Cas ID",
-        "description": "Quét mã QR hoặc nhận thông báo đẩy trên app Cas ID để duyệt yêu cầu ký — chữ ký số PAdES kèm dấu thời gian từ CA được cấp phép."
+        "title": "Đặt vị trí chữ ký",
+        "description": "Xem tài liệu và đặt vị trí chữ ký, điền thông tin người ký (tuỳ chọn)."
+      },
+      "sign": {
+        "title": "Quét QR bằng Cas ID để ký",
+        "description": "Người ký rà soát nội dung tài liệu và chấp thuận yêu cầu ký."
       },
       "download": {
-        "title": "Nhận lại tệp PDF đã ký hợp lệ",
+        "title": "Nhận tệp PDF đã ký",
         "description": "Ai cũng có thể xác minh bất cứ lúc nào bằng mã phiên ký in trên tệp, hoặc tải tệp PDF lên để kiểm tra."
       }
     },
-    "tags": {
-      "invoices": "Hoá đơn & hợp đồng",
-      "reconciliation": "Biên bản đối soát",
-      "hr": "Hồ sơ nhân sự"
-    },
     "signCard": {
-      "title": "Ký hoặc xác minh chữ ký ngay, không cần đăng nhập",
+      "title": "Ký tài liệu ngay, không cần đăng nhập",
       "badge": "1 tệp / lượt",
       "dropzoneTitle": "Kéo thả PDF vào đây",
       "dropzoneSubtitle": "hoặc chọn tệp từ máy của bạn để bắt đầu ký"
@@ -36,8 +33,12 @@
     "githubLink": "Xem mã nguồn trên GitHub",
     "githubStars_other": "{{count}} sao",
     "supportedSignatures": {
-      "sign": { "summary": "Ký bằng chữ ký số từ xa trên app Cas ID" },
-      "verify": { "summary": "Xác minh được chữ ký USB Token, HSM / ký từ xa, SIM PKI" }
+      "sign": {
+        "summary": "Ký bằng chữ ký số từ xa trên app Cas ID"
+      },
+      "verify": {
+        "summary": "Xác minh được chữ ký USB Token, HSM / ký từ xa, SIM PKI"
+      }
     },
     "intent": {
       "sign": "Ký tài liệu",
@@ -54,7 +55,7 @@
       "title": "Ký bằng phương thức bạn đang có",
       "subtitle": "KysoQR do Casso phát triển. Chữ ký số được cấp bởi các tổ chức cung cấp dịch vụ chứng thực chữ ký số (CA) được cấp phép tại Việt Nam.",
       "availableBadge": "Dùng ngay trên KysoQR",
-      "inDevelopmentBadge": "Đang phát triển",
+      "inDevelopmentBadge": "Sắp ra mắt",
       "providersLabel": "Nhà cung cấp chữ ký",
       "registerFree": "Tặng 1000 chữ ký số miễn phí",
       "cassoTagline": "Hệ sinh thái trợ thủ tài chính CASSO - Lựa chọn tin cậy của các doanh nghiệp dẫn đầu.",
@@ -79,10 +80,103 @@
     }
   },
   "nav": {
-    "docs": "Tài liệu",
-    "api": "API",
-    "letter": "CEO Letter",
+    "whyKicker": "Vì sao",
+    "whyLabel": "Ký số QR",
+    "openSourceKicker": "Ký số",
+    "openSourceLabel": "Mã nguồn mở",
+    "apiKicker": "API",
+    "apiLabel": "Ký hàng loạt",
+    "verifyKicker": "Xác minh",
+    "verifyLabel": "Tài liệu ký",
     "comingSoon": "Sắp có"
+  },
+  "verifyPage": {
+    "title": "Xác minh tài liệu ký",
+    "lead": "Hai cách kiểm tra một tệp đã ký: tra phiên Ký số QR bằng mã in trên tài liệu, hoặc tải PDF lên để kiểm tra chữ ký theo chuỗi chứng thư tới Root CA quốc gia.",
+    "session": {
+      "kicker": "Ký số QR",
+      "description": "Dùng cho tài liệu đã ký bằng Ký số QR. Nhập mã phiên ký in trên tệp để xem ai đã ký, lúc nào, và trên thiết bị nào."
+    },
+    "chain": {
+      "kicker": "Chuỗi chứng thư",
+      "title": "Xác minh theo Root CA quốc gia",
+      "description": "Dùng cho mọi PDF đã ký bằng chứng thư số hợp lệ, kể cả USB Token, HSM hay SIM PKI. Tải tệp lên để kiểm tra chữ ký và tra ngược chuỗi chứng thư tới Root CA của Việt Nam.",
+      "dropzoneTitle": "Kéo thả PDF đã ký vào đây",
+      "dropzoneSubtitle": "hoặc chọn tệp từ máy của bạn để xác minh"
+    },
+    "explain": {
+      "eyebrow": "Cách chữ ký số được kiểm tra",
+      "title": "Tra ngược chuỗi chứng thư tới Root CA quốc gia",
+      "intro": "Chữ ký số trên PDF không phải là hình ảnh chữ ký. Đó là chứng thư số của người ký, gắn với nội dung tệp bằng mật mã. Để biết chữ ký có đáng tin hay không, hệ thống tra ngược chuỗi chứng thư cho tới chứng thư gốc do Nhà nước công nhận.",
+      "steps": {
+        "read": {
+          "title": "Đọc chữ ký trong PDF",
+          "description": "Tệp đã ký chứa một hoặc nhiều chữ ký số. Mỗi chữ ký chỉ rõ vùng nội dung được ký, cùng chứng thư của người ký."
+        },
+        "signature": {
+          "title": "Kiểm tra chữ ký có đúng khóa của người ký",
+          "description": "Chữ ký được kiểm tra bằng khóa công khai trên chứng thư của người ký. Không khớp thì chữ ký không hợp lệ, dù hình chữ ký trên trang vẫn còn."
+        },
+        "content": {
+          "title": "Kiểm tra nội dung còn nguyên",
+          "description": "Hệ thống so vùng nội dung được ký với giá trị đã được ký. Nếu tệp bị sửa sau khi ký, kết quả là nội dung đã thay đổi."
+        },
+        "chain": {
+          "title": "Tra ngược chuỗi chứng thư",
+          "description": "Chứng thư người ký do một tổ chức chứng thực (CA) cấp. CA đó có thể do CA cấp cao hơn cấp. Chuỗi đi từ chứng thư người ký, qua các CA trung gian, tới chứng thư gốc."
+        },
+        "root": {
+          "title": "Khớp Root CA quốc gia",
+          "description": "Chuỗi chỉ được tin cậy khi chứng thư gốc đúng là Root CA Việt Nam do NEAC công bố tại rootca.gov.vn (Bộ Thông tin và Truyền thông). KysoQR dùng bản SHA-256 thế hệ G2 và G3. Trùng tên nhà cung cấp là chưa đủ: từng mắt xích phải được chứng thư phía trên ký đúng bằng khóa của chứng thư đó."
+        },
+        "time": {
+          "title": "Xét tại thời điểm ký",
+          "description": "Kết quả tính theo thời điểm ký, không theo lúc bạn mở trang này. Chứng thư hết hạn sau ngày ký không làm chữ ký lúc đó thành giả."
+        }
+      },
+      "note": "Tra cứu phiên ký là việc khác: nó hỏi lại đúng phiên Ký số QR trên KysoQR. Cách tra ngược chuỗi chứng thư ở trên áp dụng cho mọi PDF ký bằng chứng thư số, không cần mã phiên."
+    }
+  },
+  "openSourcePage": {
+    "title": "Ký số mã nguồn mở",
+    "lead": "Tự chạy KysoQR trên máy tính, server của bạn hoặc cloudflare, ký một tài liệu bằng Cas ID, rồi đổi sang key riêng khi đưa vào dùng thật.",
+    "tocLabel": "Mục lục",
+    "toc": {
+      "quick": "Bắt đầu nhanh",
+      "local": "Chạy local",
+      "pm2": "Deploy dùng pm2",
+      "worker": "Deploy trên Cloudflare Worker",
+      "sign": "Thực hiện ký",
+      "production": "Triển khai thực tế",
+      "vendor": "Đăng ký thành Vendor của Cas",
+      "app": "Tạo App và cập nhật thông số env"
+    },
+    "quickBody": "KysoQR.com là một giải pháp ký số đơn giản, không database, không đăng ký, đăng nhập. Yêu cầu Node.js 22 trở lên",
+    "localIntro": "Dùng khi đang sửa code hoặc muốn ký thử trên máy mình.",
+    "gitPullBody": "Nếu chưa có mã nguồn, clone về rồi kéo bản mới nhất. Nếu đã có thư mục repo, đứng trong thư mục đó và chỉ chạy git pull.",
+    "npmCiBody": "Cài đúng phiên bản dependency đã khóa trong package-lock.json.",
+    "envBody": "Copy file mẫu rồi điền key dùng thử. Key này dùng chung, chỉ để chạy thử — không dùng cho tài liệu thật hằng ngày.",
+    "envNote": "Xác minh chữ ký chạy được cả khi chưa điền env. Muốn ký thì cần đủ cả ba biến.",
+    "runBody": "Mở trình duyệt tại địa chỉ bên dưới. Dừng server bằng Ctrl+C trong terminal đang chạy.",
+    "pm2Body": "Trên VPS, làm xong các bước cài dependency và điền .env như khi chạy local, rồi build bản production và để pm2 giữ tiến trình. Lệnh pm2 startup in ra một dòng sudo — chạy đúng dòng đó để app tự bật lại sau khi máy reboot.",
+    "pm2Note": "npm run start chính là next start, lắng nghe cổng 3000. Đặt Nginx hoặc Caddy phía trước nếu cần HTTPS.",
+    "workerBody": "Kết nối repo với Cloudflare Workers Builds. Điền đúng hai lệnh này một lần, thư mục gốc để /.",
+    "workerBuild": "Build command",
+    "workerDeploy": "Deploy command",
+    "workerEnv": "Ba biến CAS_ESIGN_* điền ở Settings → Runtime → Variables and secrets. Không điền ở tab Builds — Worker đang chạy không đọc được giá trị ở đó. Mỗi lần push lên nhánh đã nối, Cloudflare tự build và deploy lại.",
+    "workerLocal": "Muốn xem bản Worker ngay trên máy, trước khi push:",
+    "signIntro": "KysoQR không giữ khóa ký. Người ký duyệt trên app Cas ID.",
+    "signSteps": {
+      "download": "Tải app Cas ID trên App Store hoặc Google Play.",
+      "register": "Trong app, đăng ký chữ ký số. Làm theo hướng dẫn trên",
+      "registerLink": "cas.so/cas-id/chu-ky-so/",
+      "do": "Trên KysoQR, tải PDF lên, đặt vị trí chữ ký rồi bấm ký. Quét mã QR bằng Cas ID, hoặc nhận thông báo trong app nếu đã nhập số căn cước. Duyệt yêu cầu ký, rồi tải PDF đã ký về."
+    },
+    "productionIntro": "Key trial chỉ để thử. Khi ký tài liệu thật hoặc gắn KysoQR vào sản phẩm, dùng key của chính bạn.",
+    "vendorBody": "Đăng ký thành vendor của Cas tại",
+    "vendorLink": "cas.so/",
+    "appBody": "Trong tài khoản vendor, tạo một App. Lấy client id và api key rồi thay hai dòng này trong .env (giữ nguyên CAS_ESIGN_BASE_URL):",
+    "appWorker": "Nếu app đang chạy trên Cloudflare, sửa hai biến này ở Runtime rồi deploy lại."
   },
   "footer": {
     "title1": "Bảo mật chuẩn quốc tế",
@@ -96,9 +190,6 @@
     "scan": "Chưa có chữ ký số? Kéo xuống để đăng ký"
   },
   "steps": {
-    "uploadRequest": "Tải PDF & yêu cầu quyền",
-    "scan": "Quét QR",
-    "done": "Tài liệu đã ký",
     "progressLabel": "Bước {{current}}/{{total}}",
     "ariaProgress": "Tiến trình ký tài liệu",
     "helperUploadRequest": "Bắt đầu bằng cách tải PDF lên và chuẩn bị yêu cầu ký.",
@@ -133,7 +224,10 @@
   },
   "signerConfig": {
     "signerKindLabel": "Người ký là ai?",
-    "signerKind": { "individual": "Cá nhân", "enterprise": "Doanh nghiệp" },
+    "signerKind": {
+      "individual": "Cá nhân",
+      "enterprise": "Doanh nghiệp"
+    },
     "cccdLabel": "CCCD người ký",
     "optionalNotice": "Nhập thông tin thì gửi yêu cầu ký sang Cas ID.",
     "enterpriseTaxCodeRequired": "Bắt buộc nhập MST để ký doanh nghiệp.",
@@ -188,7 +282,9 @@
     "copyLink": "Sao chép liên kết",
     "copied": "Đã sao chép!",
     "tip": "Mở CAS ID để quét QR cấp quyền ký hoặc nhấn vào thông báo mới gửi tới CAS ID của bạn. Chưa có CAS ID? Xem video hướng dẫn đăng ký ngay bên dưới.",
-    "aria": { "qrCode": "Mã QR" }
+    "aria": {
+      "qrCode": "Mã QR"
+    }
   },
   "sign": {
     "needUploadForPreview": "Hãy tải PDF để xem trước và đặt vị trí chữ ký.",
@@ -336,7 +432,8 @@
   },
   "signatureHistory": {
     "title": "Lịch sử ký",
-    "subtitle_other": "Tài liệu này đã có {{count}} chữ ký số trước đó.",    "closeAriaLabel": "Đóng lịch sử ký",
+    "subtitle_other": "Tài liệu này đã có {{count}} chữ ký số trước đó.",
+    "closeAriaLabel": "Đóng lịch sử ký",
     "chain": {
       "title": "Chuỗi chứng thư số",
       "ca": "Tổ chức phát hành (CA)",

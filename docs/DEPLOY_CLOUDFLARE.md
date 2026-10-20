@@ -55,5 +55,5 @@ npm run cf:preview   # build rồi chạy thử ngay trên máy bằng workerd (
 ## 4. Kiểm tra sau khi deploy
 
 - Xem log thật: dashboard → **Observability** → **Logs** (bấm vào từng dòng để xem chi tiết exception nếu có lỗi), hoặc `npx wrangler tail <tên-worker>` (đã có `wrangler` trong `devDependencies`, không cần cài riêng).
-- Test xác minh 1 file PDF đã ký thật ở `https://<worker>.workers.dev/verify` — không được thấy trạng thái `Chưa cấu hình kho tin cậy` (`TRUST_STORE_NOT_CONFIGURED`). Nếu thấy, kiểm tra lại build log có dòng `[gen:certs] ...` (nghĩa là `prebuild` đã chạy) hay không.
+- Test xác minh 1 file PDF đã ký thật ở `https://<worker>.workers.dev/verify/` — không được thấy trạng thái `Chưa cấu hình kho tin cậy` (`TRUST_STORE_NOT_CONFIGURED`). Nếu thấy, kiểm tra lại build log có dòng `[gen:certs] ...` (nghĩa là `prebuild` đã chạy) hay không.
 - Test ký thử (nút "Ký") để xác nhận `/api/sign/request` không trả về HTTP 500 — nếu còn lỗi, kiểm tra lại đúng tab **Runtime** (không phải Builds) của biến môi trường.

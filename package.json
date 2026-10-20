@@ -18,15 +18,14 @@
     "lint": "eslint . --fix",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "cf:build": "opennextjs-cloudflare build",
-    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview"
+    "cf:build": "node scripts/patchOpenNextOtelAlias.js && opennextjs-cloudflare build",
+    "cf:preview": "npm run cf:build && opennextjs-cloudflare preview"
   },
   "dependencies": {
     "@iconify/react": "6.0.2",
     "@scalar/api-reference-react": "0.9.74",
     "asn1js": "^3.0.10",
     "i18next": "26.4.2",
-    "marked": "18.0.14",
     "next": "16.3.5",
     "node-forge": "1.4.0",
     "pdfjs-dist": "6.3.289",

@@ -1,7 +1,7 @@
 import forge from 'node-forge';
 import { derBytes } from '../trustStore/certBundleLoader';
 import type { TrustStore } from '../trustStore/TrustStore';
-import { fetchCaIssuerCertificates } from './aiaCertFetcher';
+import { type AiaInFlight, fetchCaIssuerCertificates } from './aiaCertFetcher';
 import { fixForgeString } from './fixForgeString';
 import { getAttributeLabel, shouldHideAttribute } from './certParser';
 import { parseCmsMessage } from './cmsAsn1';
@@ -48,6 +48,21 @@ export type ChainVerificationResult = {
    * it can show that fact alongside the (still-valid) verdict.
    */
   certificateExpiredNow?: boolean;
+  /**
+   * Intermediate-certificate (AIA) downloads that failed while building this
+   * chain -- the real reason behind a chain that stops at the leaf. For the
+   * SERVER LOG only (`VerificationLogDetail`): never copied into the
+   * `VerificationResult` sent to the client.
+   */
+  aiaFailures?: AiaFailure[];
+};
+
+export type AiaFailure = {
+  url: string | null;
+  attempts?: number | undefined;
+  error: string;
+  /** An expired cached copy was used instead (the chain did not break). */
+  stale: boolean;
 };
 
 function normalizeDn(
@@ -172,7 +187,9 @@ function buildExtendedChain(
  */
 async function spliceDiscoveredIssuers(
   cmsCerts: forge.pki.Certificate[],
-  trustedRootCerts: forge.pki.Certificate[]
+  trustedRootCerts: forge.pki.Certificate[],
+  aiaInFlight?: AiaInFlight,
+  aiaFailures?: AiaFailure[]
 ): Promise<forge.pki.Certificate[]> {
   const extended = [...cmsCerts];
   const visited = new Set(extended.map((c) => derBytes(c)));
@@ -197,7 +214,23 @@ async function spliceDiscoveredIssuers(
       continue;
     }
 
-    const outcome = await fetchCaIssuerCertificates(last);
+    const outcome = await fetchCaIssuerCertificates(last, undefined, aiaInFlight);
+    if (outcome.error) {
+      // Server log only -- the reason a chain stops at the leaf is otherwise
+      // invisible (it just surfaces as ROOT_NOT_TRUSTED).
+      console.warn(
+        outcome.stale
+          ? '[aia] intermediate certificate download failed, used the expired cached copy'
+          : '[aia] intermediate certificate download failed',
+        { url: outcome.url, attempts: outcome.attempts, error: outcome.error }
+      );
+      aiaFailures?.push({
+        url: outcome.url,
+        attempts: outcome.attempts,
+        error: outcome.error,
+        stale: outcome.stale === true,
+      });
+    }
     const candidate = outcome.certs.find((c) => normalizeDn(c.subject.attributes) === issuerKey);
     if (!candidate) {
       break;
@@ -229,7 +262,10 @@ async function spliceDiscoveredIssuers(
 export async function verifyCertificateChainFromCmsBuffer(
   cmsDer: Buffer,
   trustStore: TrustStore,
-  validityCheckDate?: Date
+  validityCheckDate?: Date,
+  /** Shares intermediate-certificate downloads across the signatures of one
+   * verification (see `AiaInFlight`). */
+  aiaInFlight?: AiaInFlight
 ): Promise<ChainVerificationResult | null> {
   try {
     const p7 = parseCmsMessage(cmsDer);
@@ -253,6 +289,7 @@ export async function verifyCertificateChainFromCmsBuffer(
     let rootNotInTrustStore = false;
     let certsForChain = certs;
     let trustedRootCerts: forge.pki.Certificate[] = [];
+    const aiaFailures: AiaFailure[] = [];
 
     if (!trustStore.isConfigured()) {
       error = 'Trust store is not configured on the server';
@@ -268,7 +305,7 @@ export async function verifyCertificateChainFromCmsBuffer(
         })
         .filter((c): c is forge.pki.Certificate => c !== null);
 
-      certsForChain = await spliceDiscoveredIssuers(certs, trustedRootCerts);
+      certsForChain = await spliceDiscoveredIssuers(certs, trustedRootCerts, aiaInFlight, aiaFailures);
 
       try {
         const caStore = forge.pki.createCaStore(trustedPems);
@@ -371,7 +408,14 @@ export async function verifyCertificateChainFromCmsBuffer(
       chain[index]!.crl = crl;
     }
 
-    return { valid, error, chain, rootNotInTrustStore, certificateExpiredNow };
+    return {
+      valid,
+      error,
+      chain,
+      rootNotInTrustStore,
+      certificateExpiredNow,
+      ...(aiaFailures.length > 0 ? { aiaFailures } : {}),
+    };
   } catch {
     return null;
   }
