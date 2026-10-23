@@ -14,6 +14,20 @@ export type CasSignerConfigValue = {
   representativeName: string;
 };
 
+/** The form value after the signer kind changes. Both kinds use the CCCD (it
+ * is what makes Cas ID push a notification), so it survives the switch;
+ * everything else belongs to one kind only and starts empty. */
+export const switchSignerKind = (
+  value: CasSignerConfigValue,
+  kind: SignerKind
+): CasSignerConfigValue => ({
+  signerKind: kind,
+  identificationNumber: value.identificationNumber,
+  taxCode: '',
+  organizationName: '',
+  representativeName: '',
+});
+
 /**
  * Simplified port of x-sign-web/src/features/intentSigning/SignerConfigPanel.tsx
  * — same fields/layout/copy, minus the IDKIT auto-fill-by-tax-code effect and
@@ -35,20 +49,28 @@ export function SignerConfigPanel({
   const isEnterprise = value.signerKind === 'enterprise';
 
   const changeSignerKind = (kind: SignerKind) => {
-    if (kind === value.signerKind) return;
-    onChange({
-      signerKind: kind,
-      identificationNumber: '',
-      taxCode: '',
-      organizationName: '',
-      representativeName: '',
-    });
+    if (kind !== value.signerKind) onChange(switchSignerKind(value, kind));
   };
 
   const cccdError =
     value.identificationNumber && !/^\d{9}$|^\d{12}$/.test(value.identificationNumber)
       ? t('signerConfig.errors.cccd')
       : null;
+  // Shared by both kinds: an individual's own CCCD, or -- for an enterprise --
+  // the CCCD of the person signing on its behalf. Optional either way: empty
+  // means "sign by QR", filled means Cas ID also sends a notification.
+  const cccdField = (
+    <TextField
+      id="signer-cccd"
+      label={t('signerConfig.cccdLabel')}
+      value={value.identificationNumber}
+      onChange={(next) => set('identificationNumber', next)}
+      placeholder="077088002778"
+      inputMode="numeric"
+      disabled={disabled}
+      error={cccdError}
+    />
+  );
   const taxCodeTrimmed = value.taxCode.trim();
   const taxCodeError =
     isEnterprise && taxCodeTrimmed && !/^\d{10}(?:-\d{3})?$/.test(taxCodeTrimmed)
@@ -119,6 +141,7 @@ export function SignerConfigPanel({
             error={taxCodeError}
             hint={t('signerConfig.taxCodeHint')}
           />
+          {cccdField}
           {/* <TextField
             id="signer-organization"
             label={t('signerConfig.organizationLabel')}
@@ -138,16 +161,7 @@ export function SignerConfigPanel({
         </>
       ) : (
         <>
-          <TextField
-            id="signer-cccd"
-            label={t('signerConfig.cccdLabel')}
-            value={value.identificationNumber}
-            onChange={(next) => set('identificationNumber', next)}
-            placeholder="077088002778"
-            inputMode="numeric"
-            disabled={disabled}
-            error={cccdError}
-          />
+          {cccdField}
           {/* <TextField
             id="signer-full-name"
             label={t('signerConfig.fullNameLabel')}
@@ -159,6 +173,8 @@ export function SignerConfigPanel({
         </>
       )}
 
+      {/* "Leave blank to sign by QR" only makes sense for an individual: an
+          enterprise signer is asked for the CCCD alongside the tax code. */}
       {!isEnterprise && !value.identificationNumber && (
         <div className="rounded-md border border-warning-border bg-warning-bg px-3 py-1.5 text-[11px] text-warning-text">
           {t('signerConfig.noCccdWarning')}
@@ -174,8 +190,11 @@ export default SignerConfigPanel;
  * For an individual nothing is REQUIRED -- real signer identity is confirmed
  * afterwards in the CAS ID app during the QR step (QR-only signing is a
  * deliberate, supported path), so only a CCCD that's PRESENT but malformed is
- * rejected. An enterprise signer MUST provide a well-formed tax code (MST);
- * the server enforces the same rule (`lib/domain/CasSignerConfig.ts`).
+ * rejected. In THIS form an enterprise signer must provide BOTH a well-formed
+ * tax code (MST) and the CCCD of the person signing for it, so Cas ID can
+ * notify that person; "Ký" stays disabled until both are valid. The server
+ * (`lib/domain/CasSignerConfig.ts`) still only requires the tax code, so API
+ * clients that sign an enterprise request by QR keep working.
  * `organizationName`/`representativeName` are never checked: CAS's own submit
  * call only ever receives `organizationName` when non-empty (and never
  * `representativeName` at all). */
@@ -183,5 +202,5 @@ export const isCasSignerConfigValid = (config: CasSignerConfigValue): boolean =>
   const identification = config.identificationNumber.trim();
   if (identification && !/^\d{9}$|^\d{12}$/.test(identification)) return false;
   if (config.signerKind !== 'enterprise') return true;
-  return /^\d{10}(?:-\d{3})?$/.test(config.taxCode.trim());
+  return identification !== '' && /^\d{10}(?:-\d{3})?$/.test(config.taxCode.trim());
 };
