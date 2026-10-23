@@ -231,7 +231,7 @@
     },
     "cccdLabel": "Citizen ID (CCCD)",
     "optionalNotice": "Enter details to send the signing request to Cas ID.",
-    "enterpriseTaxCodeRequired": "A tax code (MST) is required to sign as an enterprise.",
+    "enterpriseTaxCodeRequired": "A tax code (MST, CCCD) is required to sign as an enterprise.",
     "fullNameLabel": "Signer's full name",
     "fullNamePlaceholder": "NGUYEN VAN A",
     "taxCodeLabel": "Tax code (MST)",

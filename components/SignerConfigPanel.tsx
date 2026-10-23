@@ -14,6 +14,20 @@ export type CasSignerConfigValue = {
   representativeName: string;
 };
 
+/** The form value after the signer kind changes. Both kinds use the CCCD (it
+ * is what makes Cas ID push a notification), so it survives the switch;
+ * everything else belongs to one kind only and starts empty. */
+export const switchSignerKind = (
+  value: CasSignerConfigValue,
+  kind: SignerKind
+): CasSignerConfigValue => ({
+  signerKind: kind,
+  identificationNumber: value.identificationNumber,
+  taxCode: '',
+  organizationName: '',
+  representativeName: '',
+});
+
 /**
  * Simplified port of x-sign-web/src/features/intentSigning/SignerConfigPanel.tsx
  * — same fields/layout/copy, minus the IDKIT auto-fill-by-tax-code effect and
@@ -35,20 +49,28 @@ export function SignerConfigPanel({
   const isEnterprise = value.signerKind === 'enterprise';
 
   const changeSignerKind = (kind: SignerKind) => {
-    if (kind === value.signerKind) return;
-    onChange({
-      signerKind: kind,
-      identificationNumber: '',
-      taxCode: '',
-      organizationName: '',
-      representativeName: '',
-    });
+    if (kind !== value.signerKind) onChange(switchSignerKind(value, kind));
   };
 
   const cccdError =
     value.identificationNumber && !/^\d{9}$|^\d{12}$/.test(value.identificationNumber)
       ? t('signerConfig.errors.cccd')
       : null;
+  // Shared by both kinds: an individual's own CCCD, or -- for an enterprise --
+  // the CCCD of the person signing on its behalf. Optional either way: empty
+  // means "sign by QR", filled means Cas ID also sends a notification.
+  const cccdField = (
+    <TextField
+      id="signer-cccd"
+      label={t('signerConfig.cccdLabel')}
+      value={value.identificationNumber}
+      onChange={(next) => set('identificationNumber', next)}
+      placeholder="077088002778"
+      inputMode="numeric"
+      disabled={disabled}
+      error={cccdError}
+    />
+  );
   const taxCodeTrimmed = value.taxCode.trim();
   const taxCodeError =
     isEnterprise && taxCodeTrimmed && !/^\d{10}(?:-\d{3})?$/.test(taxCodeTrimmed)
@@ -119,6 +141,7 @@ export function SignerConfigPanel({
             error={taxCodeError}
             hint={t('signerConfig.taxCodeHint')}
           />
+          {cccdField}
           {/* <TextField
             id="signer-organization"
             label={t('signerConfig.organizationLabel')}
@@ -138,16 +161,7 @@ export function SignerConfigPanel({
         </>
       ) : (
         <>
-          <TextField
-            id="signer-cccd"
-            label={t('signerConfig.cccdLabel')}
-            value={value.identificationNumber}
-            onChange={(next) => set('identificationNumber', next)}
-            placeholder="077088002778"
-            inputMode="numeric"
-            disabled={disabled}
-            error={cccdError}
-          />
+          {cccdField}
           {/* <TextField
             id="signer-full-name"
             label={t('signerConfig.fullNameLabel')}
@@ -159,6 +173,8 @@ export function SignerConfigPanel({
         </>
       )}
 
+      {/* "Leave blank to sign by QR" only makes sense for an individual: an
+          enterprise signer is asked for the CCCD alongside the tax code. */}
       {!isEnterprise && !value.identificationNumber && (
         <div className="rounded-md border border-warning-border bg-warning-bg px-3 py-1.5 text-[11px] text-warning-text">
           {t('signerConfig.noCccdWarning')}

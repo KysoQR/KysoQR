@@ -34,4 +34,40 @@ describe('CasSignerConfig.create', () => {
       taxCode
     );
   });
+
+  describe('enterprise signer with the signing person\'s CCCD (so Cas ID sends a notification)', () => {
+    it.each(['077088002778', '079123456'])('keeps CCCD %s next to the tax code', (identificationNumber) => {
+      const config = CasSignerConfig.create({
+        signerType: 'enterprise',
+        taxCode: '0316794479',
+        identificationNumber,
+      });
+      expect(config.taxCodeForSubmission()).toBe('0316794479');
+      expect(config.identificationNumber).toBe(identificationNumber);
+    });
+
+    it('trims the CCCD, and a blank one means QR-only signing', () => {
+      expect(
+        CasSignerConfig.create({
+          signerType: 'enterprise',
+          taxCode: '0316794479',
+          identificationNumber: ' 077088002778 ',
+        }).identificationNumber
+      ).toBe('077088002778');
+      expect(
+        CasSignerConfig.create({ signerType: 'enterprise', taxCode: '0316794479', identificationNumber: '  ' })
+          .identificationNumber
+      ).toBeNull();
+    });
+
+    it('rejects a malformed CCCD even though the tax code is fine', () => {
+      expect(() =>
+        CasSignerConfig.create({
+          signerType: 'enterprise',
+          taxCode: '0316794479',
+          identificationNumber: '12345',
+        })
+      ).toThrow(/identificationNumber must be 9 or 12 digits/);
+    });
+  });
 });

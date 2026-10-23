@@ -230,7 +230,7 @@
     },
     "cccdLabel": "CCCD người ký",
     "optionalNotice": "Nhập thông tin thì gửi yêu cầu ký sang Cas ID.",
-    "enterpriseTaxCodeRequired": "Bắt buộc nhập MST để ký doanh nghiệp.",
+    "enterpriseTaxCodeRequired": "Bắt buộc nhập MST, CCCD để ký doanh nghiệp.",
     "fullNameLabel": "Họ tên người ký",
     "fullNamePlaceholder": "NGUYỄN VĂN A",
     "taxCodeLabel": "Mã số thuế (MST)",
