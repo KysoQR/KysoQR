@@ -14,7 +14,8 @@ stages:
   - deploy
 
 default:
-  image: node:22
+  # Ghim đúng bản vá bảo mật Node (21/10/2026). Có bản vá mới thì đổi số này.
+  image: node:22.23.4
   cache:
     key:
       files:

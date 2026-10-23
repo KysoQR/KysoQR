@@ -7,7 +7,7 @@ Hướng dẫn deploy `KysoQR` lên một máy chủ Ubuntu tự quản lý (mô
 ## 0. Yêu cầu
 
 - SSH vào được máy chủ Ubuntu (20.04/22.04/24.04).
-- Node.js **>= 22** (theo `engines` trong `package.json` — `pdf.js` cần `Iterator.prototype.join`, chỉ có mặc định từ Node 22 trở lên; Node 20 sẽ lỗi `ReferenceError: Iterator is not defined` khi build).
+- Node.js **>= 22.23.4** (bản vá bảo mật Node ngày 21/10/2026, sửa lỗi kiểm tra hostname TLS và lỗi giải nén Brotli; theo `engines` trong `package.json` — `pdf.js` cần `Iterator.prototype.join`, chỉ có mặc định từ Node 22 trở lên; Node 20 sẽ lỗi `ReferenceError: Iterator is not defined` khi build).
 - `git`.
 
 ## 1. Cài Node.js + git lần đầu
@@ -20,7 +20,15 @@ sudo apt update && sudo apt install -y git curl
 # Node.js 22 LTS qua NodeSource
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
-node -v   # phải >= 22
+node -v   # phải >= 22.23.4
+```
+
+Đã cài Node từ trước thì chỉ cần nâng lên bản vá mới nhất của nhánh 22 rồi restart service (không cần build lại):
+
+```bash
+sudo apt update && sudo apt install --only-upgrade -y nodejs
+node -v   # phải >= 22.23.4
+sudo systemctl restart kysoqr
 ```
 
 Tạo user riêng chạy app (không chạy app bằng root):
