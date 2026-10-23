@@ -81,13 +81,30 @@ describe('SignerConfigPanel', () => {
     );
   });
 
-  it('form validity: an enterprise needs a tax code; a CCCD is optional but must be well formed', () => {
+  it('form validity: an enterprise needs BOTH a well-formed tax code and a well-formed CCCD ("Ký" stays off otherwise)', () => {
     const enterprise: CasSignerConfigValue = { ...EMPTY, signerKind: 'enterprise' };
+    const MST = '0316794479';
+    const CCCD = '077088002778';
+    // missing one or both
     expect(isCasSignerConfigValid(enterprise)).toBe(false);
-    expect(isCasSignerConfigValid({ ...enterprise, taxCode: '0316794479' })).toBe(true);
-    expect(isCasSignerConfigValid({ ...enterprise, taxCode: '0316794479', identificationNumber: '077088002778' })).toBe(
+    expect(isCasSignerConfigValid({ ...enterprise, taxCode: MST })).toBe(false); // MST only
+    expect(isCasSignerConfigValid({ ...enterprise, identificationNumber: CCCD })).toBe(false); // CCCD only
+    expect(isCasSignerConfigValid({ ...enterprise, taxCode: MST, identificationNumber: '   ' })).toBe(false); // blank CCCD
+    expect(isCasSignerConfigValid({ ...enterprise, taxCode: '   ', identificationNumber: CCCD })).toBe(false); // blank MST
+    // both present -> valid, also with a branch suffix and an old 9-digit CMND
+    expect(isCasSignerConfigValid({ ...enterprise, taxCode: MST, identificationNumber: CCCD })).toBe(true);
+    expect(isCasSignerConfigValid({ ...enterprise, taxCode: '0316794479-001', identificationNumber: '079123456' })).toBe(
       true
     );
-    expect(isCasSignerConfigValid({ ...enterprise, taxCode: '0316794479', identificationNumber: '123' })).toBe(false);
+    expect(isCasSignerConfigValid({ ...enterprise, taxCode: ` ${MST} `, identificationNumber: ` ${CCCD} ` })).toBe(true);
+    // both present but one malformed
+    expect(isCasSignerConfigValid({ ...enterprise, taxCode: MST, identificationNumber: '123' })).toBe(false);
+    expect(isCasSignerConfigValid({ ...enterprise, taxCode: '123', identificationNumber: CCCD })).toBe(false);
+  });
+
+  it('form validity: an individual still needs nothing, only a CCCD that is present must be well formed', () => {
+    expect(isCasSignerConfigValid(EMPTY)).toBe(true);
+    expect(isCasSignerConfigValid({ ...EMPTY, identificationNumber: '077088002778' })).toBe(true);
+    expect(isCasSignerConfigValid({ ...EMPTY, identificationNumber: '123' })).toBe(false);
   });
 });

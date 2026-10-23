@@ -190,8 +190,11 @@ export default SignerConfigPanel;
  * For an individual nothing is REQUIRED -- real signer identity is confirmed
  * afterwards in the CAS ID app during the QR step (QR-only signing is a
  * deliberate, supported path), so only a CCCD that's PRESENT but malformed is
- * rejected. An enterprise signer MUST provide a well-formed tax code (MST);
- * the server enforces the same rule (`lib/domain/CasSignerConfig.ts`).
+ * rejected. In THIS form an enterprise signer must provide BOTH a well-formed
+ * tax code (MST) and the CCCD of the person signing for it, so Cas ID can
+ * notify that person; "Ký" stays disabled until both are valid. The server
+ * (`lib/domain/CasSignerConfig.ts`) still only requires the tax code, so API
+ * clients that sign an enterprise request by QR keep working.
  * `organizationName`/`representativeName` are never checked: CAS's own submit
  * call only ever receives `organizationName` when non-empty (and never
  * `representativeName` at all). */
@@ -199,5 +202,5 @@ export const isCasSignerConfigValid = (config: CasSignerConfigValue): boolean =>
   const identification = config.identificationNumber.trim();
   if (identification && !/^\d{9}$|^\d{12}$/.test(identification)) return false;
   if (config.signerKind !== 'enterprise') return true;
-  return /^\d{10}(?:-\d{3})?$/.test(config.taxCode.trim());
+  return identification !== '' && /^\d{10}(?:-\d{3})?$/.test(config.taxCode.trim());
 };
