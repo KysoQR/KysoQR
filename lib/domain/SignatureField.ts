@@ -94,6 +94,12 @@ export class SignatureField {
     return this.props.page;
   }
 
+  /** The validated box, still in the UI convention (VNeID signing places it
+   * itself, see lib/pdfSign/geometry.ts). */
+  toPlacement(): SignatureFieldProps {
+    return { ...this.props };
+  }
+
   /**
    * Convert to CAS convention (yRatio = bottom edge from the page bottom).
    * This is the ONLY place the Y axis is flipped.

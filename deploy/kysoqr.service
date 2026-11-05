@@ -6,8 +6,18 @@ After=network.target
 Type=simple
 User=xsign
 WorkingDirectory=/opt/kysoqr
-ExecStart=/usr/bin/npm run start
+# Listen on the loopback only. Without -H, Next binds every interface, so anyone
+# who can reach port 3000 skips nginx -- and with it the X-Real-IP header the
+# rate limiter trusts, the request limits and the body-size limits.
+ExecStart=/usr/bin/npm run start -- -H 127.0.0.1
 Environment=PORT=3000
+# Files the service creates are private to it (the VNeID state database).
+UMask=0077
+# /var/lib/kysoqr, created and owned by User= at start, mode 0700. Point
+# VNEID_DB_PATH there; nothing under /opt/kysoqr needs to be writable for it.
+StateDirectory=kysoqr
+StateDirectoryMode=0700
+NoNewPrivileges=true
 Restart=on-failure
 RestartSec=5
 

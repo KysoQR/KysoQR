@@ -86,7 +86,13 @@ sudo -u xsign nano .env
 CAS_ESIGN_BASE_URL=<giá trị thật>
 CAS_ESIGN_CLIENT_ID=<giá trị thật>
 CAS_ESIGN_API_KEY=<giá trị thật>
+APP_ORIGIN=https://<your-domain>
+TRUSTED_IP_HEADER=x-real-ip
 ```
+
+`APP_ORIGIN` là địa chỉ công khai của site (scheme + host, không có đường dẫn, không có `/` ở cuối). Các chuyển hướng do `proxy.ts` tạo (`/verify` → `/verify/`) lấy gốc từ đây thay vì từ header `Host`/`X-Forwarded-Proto` của request — hai header mà người gọi tự chọn được. Bỏ trống thì app chỉ chấp nhận `Host` đúng dạng tên miền, nhưng vẫn phản chiếu nó; ở production hãy đặt.
+
+`TRUSTED_IP_HEADER` cho app biết lấy IP người dùng từ header nào để giới hạn tốc độ. `X-Real-IP` do nginx tự đặt từ kết nối thật (xem `deploy/nginx.conf.example`) nên client không chọn được. Bỏ trống thì app tin `CF-Connecting-IP`/`X-Forwarded-For` — hai header mà ai kết nối thẳng tới app cũng gửi giả được, nên giới hạn tốc độ bị lách chỉ bằng cách đổi giá trị header mỗi request. (Trên Cloudflare Worker thì **để trống**: ở đó `CF-Connecting-IP` do chính Cloudflare đặt.)
 
 `.env` đã nằm trong `.gitignore` — không bao giờ commit file này. (Root CA tin cậy không còn cấu hình qua env nữa — đã bundle sẵn trong `lib/trustStore/roots/`, xem README ở đó nếu cần thêm root mới.)
 
@@ -108,6 +114,15 @@ sudo cp deploy/kysoqr.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now kysoqr
 sudo systemctl status kysoqr
+```
+
+Unit chạy `next start -H 127.0.0.1` nên Node **chỉ nghe ở loopback**: nginx là đường vào duy nhất. Nếu server đã chạy bản unit cũ (không có `-H`), copy lại file mới rồi nạp lại:
+
+```bash
+sudo cp deploy/kysoqr.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart kysoqr
+sudo ss -ltnp | grep ':3000'   # phải thấy 127.0.0.1:3000, không phải 0.0.0.0:3000 hay *:3000
 ```
 
 Cấp quyền cho user `xsign` được chạy đúng 2 lệnh `systemctl restart`/`status` của riêng service này mà không cần mật khẩu — bắt buộc, vì [`scripts/deploy.sh`](../scripts/deploy.sh) (chạy bằng `sudo -u xsign bash scripts/deploy.sh` ở bước 8) tự gọi `sudo systemctl restart`/`status` bên trong nó. Thiếu bước này, **lần đầu deploy vẫn chạy được** (service chưa tồn tại nên script chỉ in hướng dẫn cài thủ công), nhưng **mọi lần redeploy sau đó sẽ fail** vì `xsign` không có quyền sudo:
@@ -135,13 +150,12 @@ sudo ufw enable
 
 Nếu VPS thuê từ nhà cung cấp cloud (AWS/GCP/DigitalOcean/Azure...), `ufw` chỉ là firewall **trong hệ điều hành** — còn có 1 lớp firewall riêng ở hạ tầng (Security Group/Firewall Rules trên dashboard nhà cung cấp) cũng phải mở đúng port tương ứng, `ufw` không kiểm soát được lớp đó.
 
-**Cách nhanh (test nội bộ/tạm thời)** — mở thẳng port 3000:
+**Không mở port 3000 ra ngoài.** Service chỉ nghe ở `127.0.0.1` (`-H 127.0.0.1` trong `deploy/kysoqr.service`), nên `ufw allow 3000/tcp` cũng không vào được — và không nên: ai chạm thẳng được vào Node thì bỏ qua nginx, tức bỏ qua IP thật do nginx đặt, các giới hạn tốc độ và giới hạn kích thước body. Muốn thử nhanh từ máy bạn khi chưa có domain, mở đường hầm SSH:
 
 ```bash
-sudo ufw allow 3000/tcp
+ssh -L 3000:127.0.0.1:3000 ubuntu@<server-ip-or-domain>
+# rồi mở http://localhost:3000 trên máy bạn
 ```
-
-Truy cập `http://<server-ip>:3000`.
 
 **Cách khuyến nghị cho môi trường thật** — Nginx reverse proxy + TLS (cần có domain trỏ vào server trước):
 
@@ -163,6 +177,15 @@ sudo certbot --nginx -d <your-domain>   # cấp TLS, tự động sửa config s
 sudo ufw allow 'Nginx Full'
 ```
 
+File mẫu còn làm bốn việc khác ngoài proxy, giải thích ngay trong file:
+
+1. **IP thật**: đặt `X-Real-IP` từ kết nối TCP thật; chỉ tin `CF-Connecting-IP` khi kết nối đến từ dải IP của Cloudflare (danh sách lấy từ <https://www.cloudflare.com/ips/> — cập nhật khi Cloudflare đổi) và xoá bản `CF-Connecting-IP` do client tự gửi. Đây là thứ `TRUSTED_IP_HEADER=x-real-ip` ở mục 3 dựa vào.
+2. **Đóng kết nối ngay** với request mang header `Next-Action`: app không dùng Server Action, đó là bot dò lỗ hổng (log hiện `Server Reference ID ... Received "x"`).
+3. **Từ chối file ẩn** (`/.env`, `/.git`, ...), chừa `/.well-known` cho certbot.
+4. **Giới hạn tốc độ và kích thước body riêng** cho `/api/vneid/*`, và chỉ cho `POST` vào `/api/vneid/webhook`.
+
+Sau mỗi lần sửa file nginx: `sudo nginx -t && sudo systemctl reload nginx`.
+
 ## 7. Kiểm tra sau khi deploy
 
 ```bash
@@ -170,6 +193,9 @@ sudo systemctl status kysoqr        # phải là "active (running)"
 sudo journalctl -u kysoqr -n 50     # xem log, không có exception
 
 curl -I http://127.0.0.1:3000/               # 200
+sudo ss -ltnp | grep ':3000'                 # 127.0.0.1:3000 — không được là 0.0.0.0:3000 hay *:3000
+# Request mang header Next-Action phải bị nginx đóng kết nối (curl báo "Empty reply from server"):
+curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Next-Action: x' http://127.0.0.1/
 
 # Xác nhận app đang gọi CAS thật (luôn luôn thật — không còn chế độ mock):
 curl http://127.0.0.1:3000/api/verify/signing-round/khong-ton-tai

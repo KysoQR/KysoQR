@@ -37,6 +37,16 @@ import { lookupSigningRound } from '@/lib/signingRoundLookup';
 import type { SigningRoundDetail } from '@/lib/cas/CasProvider';
 import type { VerificationResult } from '@/lib/verification/verifyPdfSignatures';
 import { CAS_ID_VIDEO_GUIDE_ID, CasIdVideoGuide } from './signing/CasIdVideoGuide';
+import { type SigningMethod, SigningMethodSwitch } from './vneid/SigningMethodSwitch';
+import {
+  EMPTY_VNEID_SIGNER,
+  isVneidSignerReady,
+  VNEID_MAX_FIELDS,
+  VneidSignerPanel,
+  type VneidSignerValue,
+} from './vneid/VneidSignerPanel';
+import { VneidWaitingCard } from './vneid/VneidWaitingCard';
+import { useVneidSigning } from '@/lib/vneid/client/useVneidSigning';
 import { ScrollCue } from './ScrollCue';
 import Footer from './Footer';
 
@@ -53,7 +63,8 @@ import Footer from './Footer';
  * navigation/documentId handoff.
  */
 
-type Step = 'upload' | 'scan' | 'done';
+/** 'scan' = waiting on Cas ID (QR); 'vneid' = waiting on the VNeID app. */
+type Step = 'upload' | 'scan' | 'vneid' | 'done';
 
 /** The 4 steps the home page shows (same i18n keys, so they always match):
  * upload -> place the signature -> scan the QR -> get the signed PDF. The
@@ -267,6 +278,10 @@ export function SigningWizard({
   const [dragCounter, setDragCounter] = useState(0);
   const [signerConfig, setSignerConfig] = useState<CasSignerConfigValue>(DEFAULT_SIGNER_CONFIG);
   const [signatureFields, setSignatureFields] = useState<SignatureFieldProps[]>([]);
+  const [signingMethod, setSigningMethod] = useState<SigningMethod>('casid');
+  const [vneidSigner, setVneidSigner] = useState<VneidSignerValue>(EMPTY_VNEID_SIGNER);
+  /** The VNeID-signed file, kept for "Tiếp tục ký" (no identityKey to re-download with). */
+  const vneidSignedBlobRef = useRef<Blob | null>(null);
 
   // The left column (upload + signer config) follows whether the document
   // currently has any signature field: it opens with the first one and
@@ -426,10 +441,29 @@ export function SigningWizard({
    * the toolbar can show a "verifying" spinner instead of nothing. */
   const [checkingSignatures, setCheckingSignatures] = useState(false);
 
-  const currentStepIndex = step === 'done' ? 3 : step === 'scan' ? 2 : file ? 1 : 0;
+  const vneid = useVneidSigning(i18n.language?.startsWith('en') ? 'en' : 'vi', {
+    onSigned: (signed) => {
+      vneidSignedBlobRef.current = signed;
+      setSignedPdfUrl(URL.createObjectURL(signed));
+      setOrgIdSigned(null);
+      setStatus('SIGNED');
+      setShowDownloadReminder(true);
+      setStep('done');
+    },
+  });
+
+  const currentStepIndex =
+    step === 'done' ? 3 : step === 'scan' || step === 'vneid' ? 2 : file ? 1 : 0;
   const steps = useMemo(
-    () => DISPLAY_STEP_KEYS.map((key) => ({ key, label: t(`home.steps.${key}.title`) })),
-    [t]
+    () =>
+      DISPLAY_STEP_KEYS.map((key) => ({
+        key,
+        label:
+          key === 'sign' && signingMethod === 'vneid'
+            ? t('vneid.stepTitle')
+            : t(`home.steps.${key}.title`),
+      })),
+    [t, signingMethod]
   );
   const progressLabel = t('steps.progressLabel', {
     current: currentStepIndex + 1,
@@ -631,16 +665,39 @@ export function SigningWizard({
       ? 'lg:grid-cols-[minmax(260px,0.48fr)_minmax(0,1.86fr)]'
       : 'lg:grid-cols-1';
 
+  const tooManyVneidFields =
+    signingMethod === 'vneid' && signatureFields.length > VNEID_MAX_FIELDS;
   const canSubmit =
     Boolean(file) &&
     signatureFields.length > 0 &&
-    isCasSignerConfigValid(signerConfig) &&
+    (signingMethod === 'vneid'
+      ? isVneidSignerReady(vneidSigner) && !tooManyVneidFields
+      : isCasSignerConfigValid(signerConfig)) &&
     !submitting;
 
   const handleSubmit = useCallback(async () => {
     if (!file) return;
     setSubmitting(true);
     setSubmitError(null);
+    if (signingMethod === 'vneid') {
+      // The server re-checks everything; only the CCCD, the boxes, the file
+      // and the picked certificate's id are sent.
+      const failure = await vneid.start({
+        file,
+        fields: signatureFields,
+        citizenPid: vneidSigner.citizenPid,
+        credentialId: vneidSigner.credentialId ?? '',
+      });
+      setSubmitting(false);
+      if (failure) {
+        setSubmitError(failure);
+        return;
+      }
+      // Only for the download file name; no Cas ID session keys are written.
+      window.localStorage.setItem(LS_KEYS.documentName, file.name);
+      setStep('vneid');
+      return;
+    }
     try {
       const form = new FormData();
       form.append('file', file);
@@ -680,7 +737,7 @@ export function SigningWizard({
     } finally {
       setSubmitting(false);
     }
-  }, [file, signatureFields, signerConfig, i18n.language]);
+  }, [file, signatureFields, signerConfig, i18n.language, signingMethod, vneid, vneidSigner]);
 
   /** Shared fetch+error-handling for /api/sign/download — used both to show
    * the inline preview (fetchSignedPdfOnce, below) and to feed a fresh File
@@ -868,6 +925,9 @@ export function SigningWizard({
   const resetFlow = () => {
     clearPersistedSession();
     if (signedPdfUrlRef.current) URL.revokeObjectURL(signedPdfUrlRef.current);
+    vneid.reset();
+    vneidSignedBlobRef.current = null;
+    setVneidSigner(EMPTY_VNEID_SIGNER);
     if (onBackToHome) {
       onBackToHome();
       return;
@@ -924,11 +984,20 @@ export function SigningWizard({
    * HomeLanding's initialFile hand-off — same mechanism). Deliberately keeps
    * signerConfig (a re-signer is usually the same person/entity). */
   const handleContinueSigning = useCallback(async () => {
-    const savedIdentityKey = window.localStorage.getItem(LS_KEYS.identityKey);
-    if (!savedIdentityKey) return;
     const savedName = window.localStorage.getItem(LS_KEYS.documentName) || 'signed.pdf';
-
-    const blob = await downloadSignedPdfBlob(savedIdentityKey);
+    let blob: Blob | null;
+    if (vneidSignedBlobRef.current) {
+      // VNeID: the signed file is already here; the next signer is usually
+      // someone else, so their CCCD and certificate start empty.
+      blob = vneidSignedBlobRef.current;
+      vneidSignedBlobRef.current = null;
+      vneid.reset();
+      setVneidSigner(EMPTY_VNEID_SIGNER);
+    } else {
+      const savedIdentityKey = window.localStorage.getItem(LS_KEYS.identityKey);
+      if (!savedIdentityKey) return;
+      blob = await downloadSignedPdfBlob(savedIdentityKey);
+    }
     if (!blob) return; // error already surfaced via signedPdfError
 
     // This identityKey has now served its purpose — consume it.
@@ -950,7 +1019,14 @@ export function SigningWizard({
     setSignerConfigJustRevealed(false);
     setFile(newFile);
     setStep('upload');
-  }, [downloadSignedPdfBlob]);
+  }, [downloadSignedPdfBlob, vneid]);
+
+  /** Back to the placement step from the VNeID wait (cancel, or sign again
+   * after a refusal/expiry): file, boxes and signer stay as they were. */
+  const handleVneidBack = useCallback(() => {
+    vneid.reset();
+    setStep('upload');
+  }, [vneid]);
 
   const handleCopyCode = async () => {
     if (!orgIdSigned) return;
@@ -1190,6 +1266,9 @@ export function SigningWizard({
                         onZoomFactorChange={setPlacementZoomFactor}
                         onCanAddFieldChange={setPlacementCanAddField}
                         topInset={stickyOffset}
+                        fieldSubLabel={
+                          signingMethod === 'vneid' ? t('vneid.fieldSubLabel') : undefined
+                        }
                       />
                     ) : (
                       <div className="mx-auto flex min-h-[360px] w-full flex-col items-center justify-center rounded-xl border border-border-subtle bg-surface-soft px-4 py-8 text-center">
@@ -1315,7 +1394,17 @@ export function SigningWizard({
                               className="pointer-events-none absolute -inset-2 animate-pulse rounded-xl ring-2 ring-primary"
                             />
                           )}
-                          <SignerConfigPanel value={signerConfig} onChange={setSignerConfig} />
+                          <SigningMethodSwitch value={signingMethod} onChange={setSigningMethod} />
+                          {signingMethod === 'vneid' ? (
+                            <VneidSignerPanel value={vneidSigner} onChange={setVneidSigner} />
+                          ) : (
+                            <SignerConfigPanel value={signerConfig} onChange={setSignerConfig} />
+                          )}
+                          {tooManyVneidFields && (
+                            <p className="mt-2 text-xs text-error-text">
+                              {t('vneid.tooManyFields', { max: VNEID_MAX_FIELDS })}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -1507,6 +1596,20 @@ export function SigningWizard({
 
               <CasIdVideoGuide />
               <ScrollCue targetId={CAS_ID_VIDEO_GUIDE_ID} label={t('scrollCue.scan')} />
+            </section>
+          )}
+
+          {step === 'vneid' && (
+            <section className="mx-auto my-auto flex w-full max-w-[1180px] flex-col self-center">
+              <VneidWaitingCard
+                state={vneid.state}
+                progressLabel={progressLabel}
+                onCancel={handleVneidBack}
+                onSubmitCode={vneid.submitCode}
+                onRetryFinalize={vneid.retryFinalize}
+                onSignAgain={handleVneidBack}
+                onStartOver={resetFlow}
+              />
             </section>
           )}
 

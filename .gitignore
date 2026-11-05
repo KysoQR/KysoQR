@@ -67,3 +67,8 @@ pnpm-debug.log*
 # TypeScript build info
 *.tsbuildinfo
 next-env.d.ts
+# Local Claude Code skill (not part of project source, not pushed)
+.claude
+
+# Local VNeID signing state (SQLite file) -- holds transaction data, never commit
+.data/

@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   // Kept intentionally minimal — no persistent-filesystem or Node-only config
   // baked in here, so the door to a future Cloud Worker/Edge target stays open.
   devIndicators: false,
+  // Do not announce "X-Powered-By: Next.js" on every response -- scanners use it
+  // to pick the exploits to try (the bots in the access log already do).
+  poweredByHeader: false,
   // Public pages canonicalize with a trailing slash (`/verify/`, `/opensource/`).
   // The automatic redirect is off so `/api/...` route handlers are not forced
   // onto a slash (that 308 turns a POST into a GET). `proxy.ts` adds the

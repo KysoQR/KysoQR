@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import {
   MAX_HEIGHT_RATIO,
+  MAX_WIDTH_RATIO,
   MIN_HEIGHT_RATIO,
   MIN_WIDTH_RATIO,
   clamp,
@@ -81,6 +82,9 @@ type SignaturePlacementProps = {
    * pages (the wizard's header + toolbar). Excluded when deciding which page
    * is "visible", and used as the offset when jumping to a page. */
   topInset?: number;
+  /** Small line under "Chữ ký #n" saying where the signer approves
+   * (defaults to the Cas ID wording). */
+  fieldSubLabel?: string;
 };
 
 export type SignaturePlacementHandle = {
@@ -111,6 +115,7 @@ function SignaturePlacementInner(
     onZoomFactorChange,
     onCanAddFieldChange,
     topInset = 0,
+    fieldSubLabel,
   }: SignaturePlacementProps,
   ref: React.Ref<SignaturePlacementHandle>
 ) {
@@ -539,7 +544,9 @@ function SignaturePlacementInner(
           widthRatio: clamp(
             (moveEvent.clientX - live.left) / metrics.widthPx - field.xRatio,
             MIN_WIDTH_RATIO,
-            Math.max(1 - field.xRatio, MIN_WIDTH_RATIO)
+            // Same cap the server enforces (SignatureField.create): a wider
+            // box used to be accepted here and then refused on submit.
+            Math.min(MAX_WIDTH_RATIO, Math.max(1 - field.xRatio, MIN_WIDTH_RATIO))
           ),
           heightRatio: clamp(
             (moveEvent.clientY - live.top) / metrics.heightPx - field.yRatio,
@@ -679,6 +686,7 @@ function SignaturePlacementInner(
             metrics={pageMetrics[pageNumber]}
             fieldsHere={fieldsByPage.get(pageNumber) ?? []}
             ordinalByIndex={ordinalByIndex}
+            fieldSubLabel={fieldSubLabel}
             selectedIndex={selectedIndex}
             isDragging={isDragging}
             disabled={disabled}
@@ -706,6 +714,7 @@ function PdfPageBlock({
   metrics,
   fieldsHere,
   ordinalByIndex,
+  fieldSubLabel,
   selectedIndex,
   isDragging,
   disabled,
@@ -728,6 +737,7 @@ function PdfPageBlock({
   fieldsHere: FieldEntry[];
   /** Document-wide 1-based number per field index (see `ordinalByIndex`). */
   ordinalByIndex: number[];
+  fieldSubLabel: string | undefined;
   selectedIndex: number | null;
   isDragging: boolean;
   disabled: boolean | undefined;
@@ -816,7 +826,7 @@ function PdfPageBlock({
                     </span>
                     {!compact && (
                       <span className="whitespace-nowrap text-[10px] leading-tight text-primary-strong/70">
-                        {t('sign.fieldSubLabel')}
+                        {fieldSubLabel ?? t('sign.fieldSubLabel')}
                       </span>
                     )}
                   </div>

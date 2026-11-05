@@ -54,6 +54,16 @@ info:
     - Kết nối ra ngoài của server: host trong `CAS_ESIGN_BASE_URL`, và các host AIA/OCSP/CRL ghi trên chứng thư (qua `lib/verification/guardedFetch.ts`, chặn IP nội bộ).
 
     Nguồn trong code: `lib/cas/CasEsignProvider.ts`, `lib/cas/casPayload.ts`, `lib/casErrorDetail.ts`, `lib/mapCasState.ts`, `lib/env.ts`.
+
+    ## Ký bằng VNeID (CSign Gateway của CMC)
+
+    1. `POST /api/vneid/sign` (PDF, CCCD, ô ký) → `transactionId`, `clientSecret`, `confirmDeadline`, `expiresAt`.
+       Người ký nhận thông báo trên app **VNeID** và có 5 phút để xác nhận.
+    2. `POST /api/vneid/status` với `Authorization: Bearer <clientSecret>` cho tới khi `status` là `SIGNED` (hoặc kết thúc).
+    3. `POST /api/vneid/finalize` với đúng file PDF gốc → file PDF đã ký.
+
+    CSign báo kết quả cho server qua `POST /api/vneid/webhook`. Các route VNeID là public nhưng chỉ nhận request có
+    `Origin` của trang KysoQR; mọi response có `Cache-Control: no-store`. Thiếu cấu hình → `503 VNEID_NOT_CONFIGURED`.
   contact:
     name: KysoQR trên GitHub
     url: https://github.com/KysoQR/KysoQR
@@ -67,6 +77,8 @@ tags:
     description: Tạo yêu cầu ký, theo dõi trạng thái và tải file đã ký qua CAS e-sign.
   - name: Xác minh
     description: Xác minh chữ ký số trong PDF và tra cứu phiên ký.
+  - name: Ký bằng VNeID
+    description: Ký PDF bằng chứng thư số trên app VNeID, qua CSign Gateway của CMC.
 
 paths:
   /api/sign/request:
@@ -571,6 +583,722 @@ paths:
                   value: { error: CAS_SIGNING_ROUND_FAILED, message: CAS không phản hồi kịp thời. Vui lòng thử lại sau., detail: { timeout: true } }
           x-error-codes: [CAS_SIGNING_ROUND_FAILED]
 
+  /api/vneid/sign:
+    post:
+      tags: [Ký bằng VNeID]
+      operationId: startVneidSigning
+      summary: Gửi yêu cầu ký bằng VNeID
+      description: |
+        Kiểm tra, chuẩn bị file PDF rồi gửi yêu cầu ký sang CSign Gateway (CMC). Người ký nhận thông báo
+        "Xác nhận yêu cầu ký số" trên app **VNeID**, có **5 phút** để xác nhận; giao dịch tồn tại tối đa **30 phút**.
+
+        - Client chỉ gửi file PDF, số CCCD, vị trí ô ký và ngôn ngữ. Mọi mã gửi sang CSign (`requestId`, `documentId`, digest) do server sinh.
+        - Chứng thư số của CCCD được kiểm tra (đúng CCCD, khoá RSA, còn hạn, chuỗi CA được tin cậy) **trước khi** gửi thông báo.
+        - Mỗi CCCD chỉ có một yêu cầu đang chờ (`409 VNEID_REQUEST_PENDING`).
+        - Giữ `transactionId` và `clientSecret` để gọi `/api/vneid/status` và `/api/vneid/finalize`; `clientSecret` chỉ trả về một lần.
+        - Bắt buộc header `Origin` của trang KysoQR và `Content-Length` (tối đa 10,5MB). Khi server bật Turnstile: header `x-turnstile-token` (action `vneid_sign`).
+        - Rate limit: 30 request / 10 phút / IP.
+
+        Nguồn trong code: `app/api/vneid/sign/route.ts`, `lib/vneid/service.ts`, `lib/vneid/certPolicy.ts`, `lib/pdfSign/`.
+      parameters:
+        - name: x-turnstile-token
+          in: header
+          required: false
+          description: Token Cloudflare Turnstile. Chỉ bắt buộc khi server đặt `TURNSTILE_SECRET`.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, citizenPid, signatureFields]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File PDF (đuôi `.pdf`, `application/pdf`, tối đa 10MB, không đặt mật khẩu, không bị khoá chỉnh sửa).
+                citizenPid:
+                  type: string
+                  pattern: '^[0-9]{12}$'
+                  description: Số CCCD 12 chữ số của người ký. Không được lưu, ghi log hay trả lại.
+                  example: '001099012345'
+                signatureFields:
+                  type: string
+                  description: 'Mảng JSON (tối đa 4096 ký tự) gồm 1–10 phần tử `SignatureFieldInput`. Ví dụ: `[{"page":1,"xRatio":0.55,"yRatio":0.78,"widthRatio":0.34,"heightRatio":0.1}]`'
+                language:
+                  type: string
+                  enum: [vi, en]
+                  default: vi
+                  description: Ngôn ngữ của chữ trong ô ký và của thông báo lỗi.
+                credentialId:
+                  type: string
+                  pattern: '^[0-9A-Fa-f]{1,64}$'
+                  description: |
+                    (Tuỳ chọn) `credentialId` của chứng thư người dùng đã chọn từ `POST /api/vneid/credentials`.
+                    Server tra lại `credentials/list` và kiểm lại chứng thư đó; không có hoặc không dùng được → `422`.
+                    Bỏ trống thì server tự chọn chứng thư dùng được còn hạn lâu nhất.
+      responses:
+        '200':
+          description: Đã gửi yêu cầu sang VNeID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VneidSignResponse'
+        '400':
+          description: Số CCCD, file hoặc ô ký không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: { error: VNEID_INVALID_INPUT, message: 'Thông tin gửi lên không hợp lệ.' }
+          x-error-codes: [VNEID_INVALID_INPUT]
+        '403':
+          description: |
+            `VNEID_FORBIDDEN_ORIGIN`: thiếu `Origin` hoặc không phải trang KysoQR.
+            `VNEID_CHALLENGE_FAILED`: thiếu hoặc sai token Turnstile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CHALLENGE_FAILED]
+        '409':
+          description: CCCD này đang có một yêu cầu chờ xác nhận (ở KysoQR hoặc ở CSign, mã `-01`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_REQUEST_PENDING]
+        '411':
+          $ref: '#/components/responses/VneidLengthRequired'
+        '413':
+          $ref: '#/components/responses/VneidPayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/VneidUnsupportedMediaType'
+        '422':
+          description: |
+            `VNEID_PDF_REJECTED`: không ký được file này (mật khẩu, bị khoá, hỏng, cấu trúc không hỗ trợ).
+            `VNEID_NO_CERTIFICATE`: CCCD chưa có chứng thư (CSign `04`, `4029`, `4031`).
+            `VNEID_CERT_INVALID`: chứng thư chưa kích hoạt, hết hạn, sai CCCD hoặc khoá không hỗ trợ.
+
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_PDF_REJECTED, VNEID_NO_CERTIFICATE, VNEID_CERT_INVALID]
+        '429':
+          description: |
+            `RATE_LIMITED`: vượt rate limit theo IP.
+            `VNEID_CITIZEN_LIMITED`: CCCD có từ 10 yêu cầu bị từ chối/bỏ qua trong 24 giờ; tạm dừng 1 giờ.
+            Cả hai có header `Retry-After`.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [RATE_LIMITED, VNEID_CITIZEN_LIMITED]
+        '500':
+          $ref: '#/components/responses/VneidInternal'
+        '502':
+          description: CSign trả lỗi, không phản hồi kịp hoặc trả dữ liệu không đọc được.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_UPSTREAM]
+        '503':
+          description: |
+            `VNEID_NOT_CONFIGURED`: server chưa cấu hình ký VNeID.
+            `VNEID_DAILY_CAP`: hết hạn mức yêu cầu trong ngày (có `Retry-After`).
+            `VNEID_BUSY`: đang xử lý nhiều file; thử lại sau vài giây.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NOT_CONFIGURED, VNEID_DAILY_CAP, VNEID_BUSY]
+
+  /api/vneid/credentials:
+    post:
+      tags: [Ký bằng VNeID]
+      operationId: listVneidCredentials
+      summary: Liệt kê chứng thư số của một CCCD
+      description: |
+        Gọi `credentials/list` của CSign cho số CCCD rồi kiểm từng chứng thư (đúng CCCD, khoá RSA, còn hạn, chuỗi CA ký đúng),
+        để người dùng chọn chứng thư trước khi ký. **Không gửi thông báo nào tới điện thoại.**
+
+        - Không trả tên người giữ chứng thư hay CCCD: ai cũng gõ được số bất kỳ, nên câu trả lời không được thành công cụ tra tên.
+        - Sắp xếp: chứng thư dùng được trước, rồi theo hạn xa nhất.
+        - Chuỗi CA CSign gửi kèm không khớp **không** làm chứng thư bị loại (CSign báo nó đang hoạt động); chỉ đánh `chainVerified: false`.
+        - Bắt buộc header `Origin` của trang KysoQR và `Content-Length` (tối đa 1KB).
+        - Rate limit: 20 request / 10 phút / IP và 10 / 10 phút / CCCD.
+
+        Nguồn trong code: `app/api/vneid/credentials/route.ts`, `lib/vneid/service.ts` (`listCredentialsForCitizen`), `lib/vneid/certPolicy.ts`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [citizenPid]
+              properties:
+                citizenPid:
+                  type: string
+                  pattern: '^[0-9]{12}$'
+                  example: '001099012345'
+      responses:
+        '200':
+          description: Danh sách chứng thư.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [credentials]
+                properties:
+                  credentials:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VneidCredential'
+        '400':
+          description: Body không phải JSON hoặc số CCCD không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_INVALID_INPUT]
+        '403':
+          description: Thiếu `Origin` hoặc không phải trang KysoQR.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN]
+        '411':
+          $ref: '#/components/responses/VneidLengthRequired'
+        '413':
+          $ref: '#/components/responses/VneidPayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/VneidUnsupportedMediaType'
+        '422':
+          description: CCCD chưa có chứng thư số trên CSign (hoặc số CCCD không đúng).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NO_CERTIFICATE]
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/VneidInternal'
+        '502':
+          description: CSign trả lỗi, không phản hồi kịp hoặc trả dữ liệu không đọc được.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_UPSTREAM]
+        '503':
+          description: Server chưa cấu hình ký VNeID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NOT_CONFIGURED]
+
+  /api/vneid/providers:
+    get:
+      tags: [Ký bằng VNeID]
+      operationId: listVneidProviders
+      summary: Danh sách nhà cung cấp chứng thư và các gói
+      description: |
+        Gọi `provider/list` của CSign: các nhà cung cấp (CA) và gói chứng thư của từng nhà, **kể cả gói có phí** (kèm đơn giá),
+        để người chưa có chứng thư chọn khi đăng ký mới. Không nhận và không trả dữ liệu cá nhân.
+
+        - Không lọc theo trạng thái nhà cung cấp: spec CSign mâu thuẫn về giá trị `status`. Nhà cung cấp đang tắt sẽ bị CSign từ chối lúc đăng ký (`VNEID_PROVIDER_UNAVAILABLE`).
+        - Server chỉ hỏi CSign tối đa 10 phút một lần.
+        - Rate limit: 30 request / 10 phút / IP.
+
+        Nguồn trong code: `app/api/vneid/providers/route.ts`, `lib/vneid/registration.ts` (`listProviders`).
+      responses:
+        '200':
+          description: Các nhà cung cấp và gói.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VneidProvider'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/VneidInternal'
+        '502':
+          description: CSign trả lỗi, không phản hồi kịp hoặc trả dữ liệu không đọc được.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_UPSTREAM]
+        '503':
+          description: Server chưa cấu hình ký VNeID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NOT_CONFIGURED]
+
+  /api/vneid/registrations:
+    post:
+      tags: [Ký bằng VNeID]
+      operationId: registerVneidCertificate
+      summary: Đăng ký chứng thư mới cho người chưa có
+      description: |
+        Gửi `credentials/register` tới CSign cho CCCD, với nhà cung cấp và gói chọn từ `/api/vneid/providers`.
+        Sau đó CSign gửi yêu cầu **chia sẻ thông tin** tới app VNeID của người dân; người dân đồng ý, CA cấp chứng thư,
+        rồi người dân **kích hoạt** chứng thư trong app. Theo dõi bằng `/api/vneid/registrations/status`.
+
+        - Form (`userInfo`) chỉ được gửi tới CSign: không lưu, không ghi log, không trả lại. Server chỉ giữ nhà cung cấp, gói, trạng thái và mã lỗi của CSign, theo HMAC của CCCD, tới khi có kết quả (rồi thêm 24 giờ).
+        - Ngày gửi dạng `YYYY-MM-DD`; server đổi sang `dd/MM/yyyy` cho CSign.
+        - Mỗi CCCD một yêu cầu đang mở, tối đa 3 yêu cầu / 24 giờ.
+        - Bắt buộc header `Origin`, `Content-Length` (tối đa 8KB) và `x-turnstile-token` khi server bật Turnstile.
+        - Rate limit: 5 request / 10 phút / IP.
+
+        Nguồn trong code: `app/api/vneid/registrations/route.ts`, `lib/vneid/registration.ts` (`startRegistration`), `lib/vneid/registrationForm.ts`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VneidRegistrationRequest'
+      responses:
+        '201':
+          description: CSign đã nhận yêu cầu; người dân tiếp tục trên VNeID.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [registration]
+                properties:
+                  registration:
+                    $ref: '#/components/schemas/VneidRegistration'
+        '400':
+          description: |
+            `VNEID_INVALID_INPUT`: body không phải JSON hoặc số CCCD không hợp lệ.
+            `VNEID_REGISTRATION_INVALID`: form thiếu hoặc sai (họ tên, ngày, số điện thoại, email...), hoặc CSign không nhận thông tin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_INVALID_INPUT, VNEID_REGISTRATION_INVALID]
+        '403':
+          description: Thiếu `Origin`, không phải trang KysoQR, hoặc Turnstile không qua.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CHALLENGE_FAILED]
+        '409':
+          description: |
+            `VNEID_REGISTRATION_PENDING`: CCCD đang có yêu cầu đăng ký (hoặc yêu cầu khác) chờ trên VNeID.
+            `VNEID_ALREADY_REGISTERED`: CCCD đã có chứng thư miễn phí của nhà cung cấp này (CSign `19` / `30`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_REGISTRATION_PENDING, VNEID_ALREADY_REGISTERED]
+        '411':
+          $ref: '#/components/responses/VneidLengthRequired'
+        '413':
+          $ref: '#/components/responses/VneidPayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/VneidUnsupportedMediaType'
+        '422':
+          description: Nhà cung cấp hoặc gói không có trong danh sách của CSign, hoặc đang tắt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_PROVIDER_UNAVAILABLE]
+        '429':
+          description: |
+            `RATE_LIMITED`: vượt rate limit theo IP.
+            `VNEID_REGISTRATION_LIMITED`: CCCD đã gửi 3 yêu cầu đăng ký trong 24 giờ.
+            Cả hai có header `Retry-After`.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [RATE_LIMITED, VNEID_REGISTRATION_LIMITED]
+        '500':
+          $ref: '#/components/responses/VneidInternal'
+        '502':
+          description: CSign trả lỗi, không phản hồi kịp hoặc trả dữ liệu không đọc được.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_UPSTREAM]
+        '503':
+          description: Server chưa cấu hình ký VNeID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NOT_CONFIGURED]
+
+  /api/vneid/registrations/status:
+    post:
+      tags: [Ký bằng VNeID]
+      operationId: getVneidRegistration
+      summary: Trạng thái đăng ký chứng thư của một CCCD
+      description: |
+        Yêu cầu đăng ký chứng thư của CCCD: đang mở, hoặc đã kết thúc trong 24 giờ qua. Trả `null` nếu không có.
+        Tra theo CCCD nên sau khi tải lại trang, nhập lại CCCD là thấy lại yêu cầu. Trang gọi route này vài giây một lần trong lúc chờ.
+
+        - Server hỏi `credentials/get-status` của CSign tối đa 5 giây/lần trong 30 phút đầu, sau đó 1 phút/lần.
+        - Không có tên hay dữ liệu cá nhân trong câu trả lời.
+        - Bắt buộc header `Origin` của trang KysoQR và `Content-Length` (tối đa 1KB).
+        - Rate limit: 60 request / phút / IP và 30 / phút / CCCD.
+
+        Nguồn trong code: `app/api/vneid/registrations/status/route.ts`, `lib/vneid/registration.ts` (`getRegistration`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [citizenPid]
+              properties:
+                citizenPid:
+                  type: string
+                  pattern: '^[0-9]{12}$'
+                  example: '001099012345'
+      responses:
+        '200':
+          description: Yêu cầu đăng ký gần nhất, hoặc `null`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [registration]
+                properties:
+                  registration:
+                    oneOf:
+                      - $ref: '#/components/schemas/VneidRegistration'
+                      - type: 'null'
+        '400':
+          description: Body không phải JSON hoặc số CCCD không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_INVALID_INPUT]
+        '403':
+          description: Thiếu `Origin` hoặc không phải trang KysoQR.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN]
+        '411':
+          $ref: '#/components/responses/VneidLengthRequired'
+        '413':
+          $ref: '#/components/responses/VneidPayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/VneidUnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/VneidInternal'
+        '503':
+          description: Server chưa cấu hình ký VNeID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NOT_CONFIGURED]
+
+  /api/vneid/status:
+    post:
+      tags: [Ký bằng VNeID]
+      operationId: getVneidSigningStatus
+      summary: Tra cứu trạng thái yêu cầu ký VNeID
+      description: |
+        Đọc trạng thái từ cơ sở dữ liệu của server. Server chỉ hỏi CSign (`query-status`, tối đa 1 lần / 15 giây / yêu cầu)
+        trong lúc người ký còn xác nhận được (5 phút + 1 phút); sau đó chỉ webhook mới cập nhật kết quả.
+
+        Poll khuyến nghị: 4 giây/lần trong 5 phút đầu, sau đó 10 giây/lần; dừng ở `SIGNED`, `FINALIZED`, `REJECTED`, `EXPIRED`, `FAILED`
+        hoặc khi quá `expiresAt`; gặp `429` thì chờ theo `Retry-After`.
+
+        | `status` | Nghĩa |
+        |---|---|
+        | `PENDING` | Đã gửi, CSign chưa báo thông báo tới người ký |
+        | `WAITING_USER` | Đang chờ người ký xác nhận trên VNeID |
+        | `SIGNED` | Đã có chữ ký; gọi `/api/vneid/finalize` |
+        | `FINALIZED` | Đã tải file đã ký (vẫn tải lại được) |
+        | `REJECTED` | Người ký từ chối (`reason: REFUSED`) |
+        | `EXPIRED` | Quá thời gian (`reason: TIMEOUT`) |
+        | `FAILED` | `reason`: `SIGNATURE_UNUSABLE` (chữ ký CSign trả về không dùng được), `CODE_ATTEMPTS`, `PROVIDER` |
+
+        Sai `transactionId` hay sai `clientSecret` đều trả cùng `404`. Rate limit: 120 request / phút / IP và 30 / phút / giao dịch.
+
+        Nguồn trong code: `app/api/vneid/status/route.ts`, `lib/vneid/service.ts`.
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          description: '`Bearer <clientSecret>` nhận từ `/api/vneid/sign`.'
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VneidStatusRequest'
+      responses:
+        '200':
+          description: Trạng thái hiện tại.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VneidStatusResponse'
+        '400':
+          description: Body không phải JSON.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_INVALID_INPUT]
+        '403':
+          description: Thiếu `Origin` hoặc không phải trang KysoQR.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN]
+        '404':
+          description: Không có giao dịch này, hoặc sai `clientSecret`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NOT_FOUND]
+        '411':
+          $ref: '#/components/responses/VneidLengthRequired'
+        '413':
+          $ref: '#/components/responses/VneidPayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/VneidUnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/VneidInternal'
+        '503':
+          description: Server chưa cấu hình ký VNeID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NOT_CONFIGURED]
+
+  /api/vneid/finalize:
+    post:
+      tags: [Ký bằng VNeID]
+      operationId: finalizeVneidSigning
+      summary: Ghép chữ ký VNeID và tải file PDF đã ký
+      description: |
+        Gửi lại **đúng file PDF gốc** (body thô `application/pdf`); server kiểm tra độ dài và SHA-256 khớp với file đã gửi ký,
+        ghép chữ ký theo kiểu cập nhật nối thêm (giữ nguyên các chữ ký cũ), rồi kiểm tra lại: chữ ký mới phải hợp lệ và
+        không chữ ký cũ nào bị hỏng. Không đạt thì không trả file (`500 VNEID_SELF_CHECK_FAILED`).
+
+        **Chữ ký trong file:** cùng chuẩn với chữ ký Cas ID: `/Reason`, `/Location`, `/ContactInfo`, `/Prop_Build`
+        như CAS, field tên `Signature<n>`. Hình chữ ký gồm dấu tick, tên người ký, `Ngày: dd/MM/yyyy HH:mm:ss` và `+07:00`.
+        Giờ trong hình (và `/M`) là lúc gửi yêu cầu, vì hình được dựng trước khi người ký xác nhận.
+
+        **Thời gian ký:** ở lần gọi đầu tiên, server xin dấu thời gian RFC 3161 từ TSA (`TSA_URL`, mặc định DigiCert;
+        lỗi thì thử `TSA_FALLBACK_URL`, mặc định Sectigo) cho chữ ký vừa nhận và gắn vào CMS (thuộc tính không ký
+        `signatureTimeStampToken`, PAdES B-T): Adobe Reader hiện giờ đó là giờ ký, chỉ cách lúc xác nhận vài giây.
+        Các lần gọi sau dùng lại đúng dấu thời gian đó. Cả hai TSA đều lỗi thì file vẫn được trả, chỉ không có dấu thời gian.
+
+        Gọi được tối đa 5 lần cho mỗi giao dịch (tải lại khi mất kết nối). Rate limit: 30 request / phút / IP.
+
+        Nguồn trong code: `app/api/vneid/finalize/route.ts`, `lib/vneid/service.ts`, `lib/pdfSign/finalize.ts`.
+      parameters:
+        - name: x-vneid-tx
+          in: header
+          required: true
+          description: '`transactionId` nhận từ `/api/vneid/sign`.'
+          schema:
+            type: string
+            format: uuid
+        - name: Authorization
+          in: header
+          required: true
+          description: '`Bearer <clientSecret>`.'
+          schema:
+            type: string
+        - name: x-vneid-code
+          in: header
+          required: false
+          description: Mã 6 ký tự hiển thị trong tên tài liệu trên VNeID. Chỉ cần khi `codeRequired` là `true`.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/pdf:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: 'File PDF đã ký (`Content-Disposition: attachment`).'
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: |
+            `VNEID_FORBIDDEN_ORIGIN`: thiếu `Origin` hoặc không phải trang KysoQR.
+            `VNEID_CODE_INVALID`: sai mã xác nhận; sai 5 lần thì giao dịch bị huỷ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CODE_INVALID]
+        '404':
+          description: Không có giao dịch này, hoặc sai `clientSecret`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NOT_FOUND]
+        '409':
+          description: |
+            `VNEID_NOT_READY`: người ký chưa xác nhận.
+            `VNEID_DOCUMENT_MISMATCH`: file gửi lên không phải file đã gửi ký.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NOT_READY, VNEID_DOCUMENT_MISMATCH]
+        '411':
+          $ref: '#/components/responses/VneidLengthRequired'
+        '413':
+          $ref: '#/components/responses/VneidPayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/VneidUnsupportedMediaType'
+        '429':
+          description: |
+            `RATE_LIMITED`: vượt rate limit theo IP (có `Retry-After`).
+            `VNEID_FINALIZE_LIMIT`: đã gọi quá 5 lần cho giao dịch này.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [RATE_LIMITED, VNEID_FINALIZE_LIMIT]
+        '500':
+          description: |
+            `VNEID_SELF_CHECK_FAILED`: file sau khi ghép không qua bước kiểm tra nên không được trả về.
+            `VNEID_INTERNAL`: lỗi khác trên server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_SELF_CHECK_FAILED, VNEID_INTERNAL]
+        '503':
+          description: |
+            `VNEID_NOT_CONFIGURED`: server chưa cấu hình ký VNeID.
+            `VNEID_BUSY`: đang xử lý nhiều file; thử lại sau vài giây.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_NOT_CONFIGURED, VNEID_BUSY]
+
+  /api/vneid/webhook:
+    post:
+      tags: [Ký bằng VNeID]
+      operationId: receiveCsignWebhook
+      summary: Nhận webhook từ CSign Gateway
+      description: |
+        Endpoint để **CSign** gọi (máy với máy), không dành cho trình duyệt. Đăng ký URL này ở CSign
+        (`POST /api/organization/webhooks`) với các sự kiện `signing.created`, `signing.completed`, `signing.failed`.
+
+        - Xác thực bằng HMAC-SHA256 trên **raw body**, khoá là chuỗi secret (`CSIGN_WEBHOOK_SECRET`), header
+          `abp-webhook-signature: HMAC SHA256=<hex>`. Sai chữ ký → `401`.
+        - `organizationId` phải là của KysoQR; `timestamp` lệch quá 30 phút → `400`. Mỗi `id` sự kiện chỉ xử lý một lần.
+        - Chữ ký trong `signing.completed` chỉ được lưu khi kiểm tra toán học đúng; `signing.failed` được xác nhận lại bằng `query-status`.
+        - Trả lời theo tài liệu CSign: `200 { received: true }` (kể cả sự kiện bị bỏ qua có chủ đích); lỗi `{ error, errorDescription }`.
+          Chỉ `500` khiến CSign gửi lại.
+        - Body tối đa 64KB. Rate limit: 300 request / phút / IP.
+
+        Nguồn trong code: `app/api/vneid/webhook/route.ts`, `lib/vneid/webhook.ts`.
+      parameters:
+        - name: abp-webhook-signature
+          in: header
+          required: true
+          description: '`HMAC SHA256=<hex>` của raw body.'
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VneidWebhookEvent'
+      responses:
+        '200':
+          description: Đã nhận (đã xử lý, hoặc bỏ qua có chủ đích).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    const: true
+        '400':
+          description: '`invalid_payload`, `organization_mismatch`, `stale_event`, `payload_too_large`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VneidWebhookError'
+        '401':
+          description: '`invalid_signature`: sai chữ ký HMAC.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VneidWebhookError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          description: '`internal_error`: chưa xử lý được; CSign sẽ gửi lại.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VneidWebhookError'
+        '503':
+          description: '`not_configured`: server chưa cấu hình ký VNeID hoặc webhook.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VneidWebhookError'
+
 components:
   headers:
     RetryAfter:
@@ -625,6 +1353,34 @@ components:
               summary: Thiếu cấu hình CAS
               value: { error: CAS_NOT_CONFIGURED, message: Máy chủ chưa được cấu hình đầy đủ để ký số. Vui lòng liên hệ quản trị viên. }
       x-error-codes: [CAS_NOT_CONFIGURED]
+    VneidLengthRequired:
+      description: Thiếu header `Content-Length` (route VNeID không đọc body không khai báo độ dài).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+      x-error-codes: [VNEID_LENGTH_REQUIRED]
+    VneidPayloadTooLarge:
+      description: Body lớn hơn giới hạn của route.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+      x-error-codes: [VNEID_PAYLOAD_TOO_LARGE]
+    VneidUnsupportedMediaType:
+      description: Sai `Content-Type`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+      x-error-codes: [VNEID_UNSUPPORTED_MEDIA_TYPE]
+    VneidInternal:
+      description: Lỗi không lường trước trên server (chi tiết chỉ có trong log server).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+      x-error-codes: [VNEID_INTERNAL]
 
   schemas:
     ApiError:
@@ -930,3 +1686,284 @@ components:
         taxOrCitizenId:
           type: [string, 'null']
           description: 'MST hoặc CCCD; có thể có tiền tố `CCCD:`/`MST:`. Có thể vắng mặt.'
+
+    VneidSignResponse:
+      type: object
+      required: [transactionId, clientSecret, confirmDeadline, expiresAt, codeRequired, documentName]
+      properties:
+        transactionId:
+          type: string
+          format: uuid
+        clientSecret:
+          type: string
+          description: Bí mật 256 bit (43 ký tự base64url). Chỉ trả về một lần; giữ ở phía trình duyệt (sessionStorage), không đưa lên URL.
+        confirmDeadline:
+          type: string
+          format: date-time
+          description: Hạn người ký xác nhận trên VNeID (5 phút).
+        expiresAt:
+          type: string
+          format: date-time
+          description: Hạn của cả giao dịch (30 phút).
+        codeRequired:
+          type: boolean
+          description: '`true` khi phải nhập lại mã 6 ký tự hiển thị trên VNeID ở bước finalize.'
+        documentName:
+          type: string
+          description: Tên tài liệu người ký sẽ thấy trong thông báo trên VNeID (không chứa tên file).
+      example:
+        transactionId: 3f0c1d8e-6b2a-4c4e-9f51-7d2a9b6c1e40
+        clientSecret: q7rM2pV9wLxN4sT8kZ1bC6dF3gH5jK0aE2uY7iO9pQs
+        confirmDeadline: '2026-11-04T03:20:00.000Z'
+        expiresAt: '2026-11-04T03:45:00.000Z'
+        codeRequired: false
+        documentName: KysoQR - Ký tài liệu 1A2B3C4D
+
+    VneidCredential:
+      type: object
+      description: Một chứng thư số của CCCD. Không có tên người giữ.
+      required: [credentialId, usable, rootTrusted, chainVerified]
+      properties:
+        credentialId:
+          type: string
+          description: Serial của chứng thư (CSign `credentialID`); gửi lại trong `credentialId` của `/api/vneid/sign`.
+        issuer:
+          type: [string, 'null']
+          description: Tên (CN) của CA cấp chứng thư.
+        validFrom:
+          type: [string, 'null']
+          format: date-time
+        validTo:
+          type: [string, 'null']
+          format: date-time
+        keyBits:
+          type: [integer, 'null']
+        usable:
+          type: boolean
+          description: Dùng được để ký (qua toàn bộ kiểm tra của server).
+        reason:
+          type: string
+          enum: [NOT_ACTIVE, EXPIRED, NOT_YET_VALID, UID_MISMATCH, KEY_UNSUPPORTED, KEY_USAGE, SERIAL_MISMATCH, CHAIN_BROKEN, MALFORMED]
+          description: Vì sao không dùng được (chỉ khi `usable` là `false`).
+        rootTrusted:
+          type: boolean
+          description: Chuỗi dẫn tới root quốc gia mà KysoQR tin cậy. `false` trên môi trường UAT (root test); chữ ký vẫn tạo được nhưng `/verify` sẽ báo root chưa được tin cậy.
+        chainVerified:
+          type: boolean
+          description: |
+            Các CA CSign gửi kèm đúng là CA đã cấp và ký chứng thư này. `false` khi CSign gửi nhầm CA
+            (vd trên UAT: chứng thư do `CMC-CA RS` cấp nhưng kèm CA production `CMC-CA`). Chứng thư vẫn ký được
+            (`usable`), chữ ký và nội dung file vẫn đúng, nhưng `/verify` / Adobe không xác minh được chuỗi CA.
+        chainIssue:
+          type: string
+          enum: [issuer-not-ca, name-mismatch, signature-mismatch, ca-expired, ca-not-yet-valid]
+          description: Mắt xích đầu tiên không khớp (chỉ khi `chainVerified` là `false`).
+      example:
+        credentialId: 2E6879BD54CA1148E4D86D05A5288DC0
+        issuer: CMC-CA RS
+        validFrom: '2025-07-31T11:35:06.000Z'
+        validTo: '2026-07-31T11:35:06.000Z'
+        keyBits: 2048
+        usable: true
+        rootTrusted: true
+
+    VneidProvider:
+      type: object
+      description: Một nhà cung cấp chứng thư (CA) trên CSign và các gói của nó.
+      required: [provider, name, packs]
+      properties:
+        provider:
+          type: string
+          description: Mã nhà cung cấp; gửi lại trong `provider` khi đăng ký.
+          example: HUD-CMC-CA
+        name:
+          type: string
+          example: CÔNG TY CỔ PHẦN TẬP ĐOÀN CÔNG NGHỆ CMC
+        packs:
+          type: array
+          items:
+            type: object
+            required: [code, name, months, unitPrice, free]
+            properties:
+              code:
+                type: string
+                description: Mã gói; gửi lại trong `servicePackCode`.
+                example: VNEID-FREE-12M
+              name:
+                type: string
+              months:
+                type: [integer, 'null']
+                description: Thời hạn chứng thư (tháng).
+              unitPrice:
+                type: [number, 'null']
+                description: Đơn giá (VND). Gói có phí được tính theo hợp đồng giữa đơn vị vận hành và nhà cung cấp; KysoQR không thu tiền.
+              free:
+                type: boolean
+                description: Miễn phí (`free = 1` hoặc đơn giá 0).
+
+    VneidRegistrationRequest:
+      type: object
+      required: [citizenPid, provider, servicePackCode, userInfo]
+      properties:
+        citizenPid:
+          type: string
+          pattern: '^[0-9]{12}$'
+        provider:
+          type: string
+          example: HUD-CMC-CA
+        servicePackCode:
+          type: string
+          example: VNEID-FREE-12M
+        servicePackName:
+          type: string
+          description: |
+            Tuỳ chọn. Tên gói đã chọn, để phân biệt khi CSign liệt kê nhiều gói cùng một mã (vd VNPT `18130`).
+            Chỉ được dùng khi khớp một gói CSign liệt kê cho mã đó; CSign vẫn chỉ nhận `servicePackCode`.
+        userInfo:
+          type: object
+          description: |
+            Form đăng ký (trường của CSign `userInfo`, trừ CCCD). Bắt buộc: `fullName`, `birthDate`, `gender`, `phone`, `email`.
+            Các trường còn lại tuỳ chọn: VNeID cung cấp khi người dân đồng ý chia sẻ thông tin.
+          required: [fullName, birthDate, gender, phone, email]
+          properties:
+            fullName: { type: string, maxLength: 100 }
+            birthDate: { type: string, format: date }
+            gender: { type: string, enum: [Nam, Nữ] }
+            phone: { type: string, example: '0912345678' }
+            email: { type: string, format: email }
+            nationalityCode: { type: string, pattern: '^[A-Z]{2}$', example: VN }
+            issuingAuthority: { type: string, maxLength: 200 }
+            dateOfIssue: { type: string, format: date }
+            idCardExpireDate: { type: string, format: date }
+            permanentAddress: { type: string, maxLength: 250 }
+            permanentVillageText: { type: string, maxLength: 100 }
+            permanentCityText: { type: string, maxLength: 100 }
+            livingPlaceAddress: { type: string, maxLength: 250 }
+            livingPlaceVillageText: { type: string, maxLength: 100 }
+            livingPlaceCityText: { type: string, maxLength: 100 }
+
+    VneidRegistration:
+      type: object
+      description: Một yêu cầu đăng ký chứng thư. Không có tên hay dữ liệu cá nhân.
+      required: [status, provider, providerName, servicePackCode, servicePackName, months, unitPrice, createdAt, expiresAt]
+      properties:
+        status:
+          type: string
+          enum: [PENDING, ISSUED, COMPLETED, FAILED, REJECTED, EXPIRED]
+          description: |
+            `PENDING`: chờ người dân đồng ý chia sẻ thông tin trên VNeID / CA đang cấp.
+            `ISSUED`: đã cấp chứng thư, chờ người dân kích hoạt trong app VNeID.
+            `COMPLETED`: xong; chứng thư mới có `serialNumber` (= `credentialId`).
+            `FAILED` / `REJECTED` / `EXPIRED`: kết thúc không thành công (xem `reason`).
+        reason:
+          type: string
+          enum: [REFUSED, TIMEOUT, CITIZEN_INFO, PROVIDER]
+          description: |
+            Chỉ khi kết thúc không thành công. `REFUSED`: người dân từ chối chia sẻ; `TIMEOUT`: hết hạn;
+            `CITIZEN_INFO`: thông tin công dân trên VNeID không hợp lệ hoặc thiếu; `PROVIDER`: lỗi phía CSign / CA.
+        provider: { type: string }
+        providerName: { type: string }
+        servicePackCode: { type: string }
+        servicePackName: { type: string }
+        months: { type: [integer, 'null'] }
+        unitPrice: { type: [number, 'null'] }
+        createdAt: { type: string, format: date-time }
+        expiresAt:
+          type: string
+          format: date-time
+          description: Server bỏ theo dõi yêu cầu còn mở sau thời điểm này (24 giờ).
+        serialNumber:
+          type: string
+          description: Serial của chứng thư mới, là `credentialId` dùng khi ký (chỉ khi `COMPLETED`).
+
+    VneidStatusRequest:
+      type: object
+      required: [transactionId]
+      properties:
+        transactionId:
+          type: string
+          format: uuid
+
+    VneidStatusResponse:
+      type: object
+      required: [status, confirmDeadline, expiresAt, codeRequired]
+      properties:
+        status:
+          type: string
+          enum: [PENDING, WAITING_USER, SIGNED, FINALIZED, REJECTED, EXPIRED, FAILED]
+        reason:
+          type: string
+          enum: [REFUSED, TIMEOUT, SIGNATURE_UNUSABLE, CODE_ATTEMPTS, PROVIDER]
+          description: Chỉ có khi `status` là `REJECTED`, `EXPIRED` hoặc `FAILED`.
+        confirmDeadline:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        codeRequired:
+          type: boolean
+      example:
+        status: WAITING_USER
+        confirmDeadline: '2026-11-04T03:20:00.000Z'
+        expiresAt: '2026-11-04T03:45:00.000Z'
+        codeRequired: false
+
+    VneidWebhookEvent:
+      type: object
+      description: Sự kiện CSign gửi (tài liệu CSign Gateway v1.11, mục IV.4). Trường lạ được bỏ qua.
+      required: [id, eventName, timestamp, organizationId, data]
+      properties:
+        id:
+          type: string
+          description: Mã sự kiện; mỗi mã chỉ được xử lý một lần.
+        eventName:
+          type: string
+          example: signing.completed
+        timestamp:
+          type: string
+          format: date-time
+        organizationId:
+          type: string
+        data:
+          type: object
+          description: Với `signing.*`.
+          properties:
+            transactionId:
+              type: string
+              description: Mã giao dịch CSign (`sign-hash` trả về).
+            documentNumber:
+              type: [string, 'null']
+            providerTransactionId:
+              type: [string, 'null']
+              description: Phải khớp `rscaTransactionId` của `sign-hash`.
+            providerInternalId:
+              type: [string, 'null']
+            status:
+              type: integer
+              description: 0 thất bại, 1 đã tạo, 2 đang xử lý, 3 chờ xác nhận VNeID, 4 thành công, 5 người dùng từ chối.
+            statusDescription:
+              type: [string, 'null']
+            signatures:
+              type: [array, 'null']
+              items:
+                type: object
+                properties:
+                  documentId:
+                    type: [string, 'null']
+                  signature:
+                    type: [string, 'null']
+                    description: Chữ ký base64.
+            errorCode:
+              type: [string, 'null']
+              example: errorcode4004
+
+    VneidWebhookError:
+      type: object
+      description: Định dạng lỗi theo tài liệu webhook của CSign.
+      required: [error, errorDescription]
+      properties:
+        error:
+          type: string
+        errorDescription:
+          type: string

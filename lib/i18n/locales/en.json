@@ -451,5 +451,168 @@
         "unavailableWithUrl": "Could not be checked"
       }
     }
+  },
+  "vneid": {
+    "methodLabel": "Signing method",
+    "methods": {
+      "casid": "Cas ID",
+      "vneid": "VNeID"
+    },
+    "methodHint": {
+      "casid": "The signer scans a QR code with the Cas ID app.",
+      "vneid": "The signer confirms with the digital certificate in the VNeID app."
+    },
+    "cccdLabel": "Signer's CCCD number",
+    "cccdHint": "12 digits, the CCCD used to log in to the VNeID app.",
+    "cccdError": "The CCCD number must have 12 digits.",
+    "consent": "I agree to send the CCCD number to CSign (CMC) to look up certificates and send the signing request to the VNeID app.",
+    "fetchCredentials": "Get certificates",
+    "fetchingCredentials": "Getting certificates…",
+    "refetchCredentials": "Reload",
+    "credentialsTitle": "Choose the certificate to sign with",
+    "issuedBy": "Issued by {{issuer}}",
+    "validity": "Valid {{from}} – {{to}}",
+    "keyBits": "RSA {{bits}} bit",
+    "testRoot": "Test environment",
+    "testRootHint": "The root CA is not one KysoQR trusts: signing works, but the Verify page will report the signature as not trusted.",
+    "unusable": {
+      "NOT_ACTIVE": "Not activated",
+      "EXPIRED": "Expired",
+      "NOT_YET_VALID": "Not valid yet",
+      "UID_MISMATCH": "Does not match the CCCD",
+      "KEY_UNSUPPORTED": "Unsupported key",
+      "KEY_USAGE": "Not for signing",
+      "SERIAL_MISMATCH": "Certificate data does not match",
+      "CHAIN_BROKEN": "Invalid certificate chain",
+      "MALFORMED": "Unreadable certificate"
+    },
+    "noUsable": "No certificate can be used for signing.",
+    "selectCredential": "Choose a certificate to sign with.",
+    "tooManyFields": "VNeID signing allows at most {{max}} signature boxes.",
+    "fieldSubLabel": "Signer confirms in VNeID",
+    "waiting": {
+      "title": "Confirm in the VNeID app",
+      "subtitle": "The signing request was sent to the signer's phone.",
+      "step1": "Open the VNeID app on the phone.",
+      "step2": "Open the \"Confirm the digital signing request\" notification.",
+      "step3": "Check the document name matches the one below, then agree and enter the passcode.",
+      "documentNameLabel": "Document name in VNeID",
+      "confirmIn": "{{time}} left to confirm",
+      "confirmWindowOver": "The confirmation time is over. Waiting for the final result from VNeID…",
+      "status": {
+        "PENDING": "Waiting for VNeID…",
+        "WAITING_USER": "Notification sent, waiting for confirmation on the phone…",
+        "SIGNED": "Confirmed. Embedding the signature into the file…",
+        "FINALIZED": "Confirmed. Embedding the signature into the file…"
+      },
+      "statusWarning": "Could not update the status, retrying:",
+      "cancel": "Cancel and go back",
+      "cancelNote": "Cancelling here cannot remove the VNeID notification; it will expire on its own.",
+      "codeLabel": "Confirmation code (6 characters in the document name in VNeID)",
+      "codeSubmit": "Confirm code",
+      "finalizing": "Embedding the signature and checking the file…",
+      "finalizeFailed": "Could not produce the signed file:",
+      "retry": "Retry",
+      "ended": {
+        "REJECTED": "The signer refused the request in VNeID.",
+        "EXPIRED": "The signing request expired.",
+        "FAILED": "The signing request failed."
+      },
+      "reason": {
+        "SIGNATURE_UNUSABLE": "The signature returned by VNeID cannot be used for this file.",
+        "CODE_ATTEMPTS": "Too many wrong confirmation codes.",
+        "PROVIDER": "The signing service reported an error."
+      },
+      "signAgain": "Sign again"
+    },
+    "stepTitle": "Confirm in the VNeID app",
+    "chainMismatch": "CA chain mismatch",
+    "chainMismatchHint": "CSign sent a CA that did not issue this certificate. Signing works, but the Verify page and Adobe will not be able to verify the signature's CA chain.",
+    "register": {
+      "openButton": "Register a new certificate",
+      "later": "Not now",
+      "back": "Back",
+      "next": "Continue",
+      "stepOf": "Step {{step}} of 3",
+      "titles": {
+        "intro": "You have no certificate yet",
+        "provider": "Choose a certificate provider",
+        "pack": "Choose a certificate pack",
+        "form": "Registration details"
+      },
+      "introText": "This CCCD has no VNeID signing certificate yet. You can register a new one right here.",
+      "introStep1": "Choose a provider and a certificate pack.",
+      "introStep2": "Fill in the registration details and send them.",
+      "introStep3": "Open the VNeID app: agree to share your details, then activate the certificate once it is issued.",
+      "loadingProviders": "Loading providers…",
+      "noProviders": "No provider is taking registrations right now.",
+      "packCount_one": "{{count}} pack",
+      "packCount_other": "{{count}} packs",
+      "noPacks": "This provider has no certificate pack.",
+      "free": "Free",
+      "months_one": "{{count}} month",
+      "months_other": "{{count}} months",
+      "paidNote": "Paid pack ({{price}}). It is billed under the operator's contract with the provider; KysoQR takes no payment.",
+      "formHint": "Fields marked * are required. The others may stay empty: VNeID provides them once you agree to share your details.",
+      "fields": {
+        "citizenPid": "CCCD number",
+        "fullName": "Full name",
+        "birthDate": "Date of birth",
+        "gender": "Gender",
+        "phone": "Phone number",
+        "email": "Email",
+        "nationalityCode": "Nationality code",
+        "issuingAuthority": "CCCD issued by",
+        "dateOfIssue": "CCCD issue date",
+        "idCardExpireDate": "CCCD expiry date",
+        "permanentAddress": "Address (number, street, hamlet)",
+        "permanentVillageText": "Ward / commune",
+        "permanentCityText": "Province / city",
+        "livingPlaceAddress": "Address (number, street, hamlet)",
+        "livingPlaceVillageText": "Ward / commune",
+        "livingPlaceCityText": "Province / city"
+      },
+      "selectGender": "Choose",
+      "genders": {
+        "male": "Male",
+        "female": "Female"
+      },
+      "permanentTitle": "Permanent address",
+      "livingTitle": "Current address",
+      "sameAddress": "Same as the permanent address",
+      "consent": "I agree to send these details to CSign/CMC to register a digital certificate, and will confirm in the VNeID app.",
+      "problem": {
+        "required": "Required.",
+        "invalid": "Not valid, please check.",
+        "tooLong": "Too long."
+      },
+      "fixProblems": "Please correct the marked fields.",
+      "submit": "Send registration",
+      "submitting": "Sending…",
+      "cardTitle": "Certificate registration",
+      "status": {
+        "PENDING": "Waiting for you to share your details on VNeID…",
+        "ISSUED": "The certificate is issued. Activate it in the VNeID app…",
+        "COMPLETED": "The certificate is issued and activated.",
+        "FAILED": "The registration did not succeed.",
+        "REJECTED": "The registration was declined.",
+        "EXPIRED": "The registration expired."
+      },
+      "reason": {
+        "REFUSED": "Sharing the details was declined on VNeID.",
+        "TIMEOUT": "It was not confirmed on VNeID in time.",
+        "CITIZEN_INFO": "The citizen details on VNeID are invalid or incomplete; check them in the VNeID app.",
+        "PROVIDER": "The certificate provider reported an error. Please try again later."
+      },
+      "waitStep1": "Open the VNeID app on your phone.",
+      "waitStep2": "Open the request to share your details for the certificate, agree and enter your passcode.",
+      "waitStep3": "Once the certificate is issued, activate it in the VNeID app.",
+      "reloadHint": "You may reload the page: type the CCCD again and press Get certificates to follow it.",
+      "completedHint": "The new certificate is selected in the list below.",
+      "again": "Register again",
+      "noCertificateTitle": "This CCCD has no certificate yet",
+      "noCertificateText": "You can register a new certificate to sign with VNeID.",
+      "notListedYet": "The new certificate is not listed yet. Please press Get certificates again in a few minutes."
+    }
   }
 }
