@@ -138,13 +138,9 @@ describe('certificate registration', () => {
     });
   });
 
-  it('allows a few registrations per citizen and day', async () => {
-    ctx.csign.registerError = new CsignError('UPSTREAM', '/api/credentials/register', 'down');
-    for (let i = 0; i < 3; i += 1) await reject(start(), 'VNEID_UPSTREAM');
-    await reject(start(), 'VNEID_REGISTRATION_LIMITED');
-    ctx.clock.advance(24 * 60 * 60_000 + 1);
-    ctx.csign.registerError = undefined;
-    await expect(start()).resolves.toMatchObject({ status: 'PENDING' });
+  it('expires 30 minutes after it is sent', async () => {
+    const view = await start();
+    expect(Date.parse(view.expiresAt) - Date.parse(view.createdAt)).toBe(30 * 60_000);
   });
 });
 
@@ -242,8 +238,21 @@ describe('registration status, found again by CCCD', () => {
     expect(await status()).toMatchObject({ status: 'FAILED', reason: 'PROVIDER' });
   });
 
-  it('expires an open registration after a day', async () => {
-    ctx.clock.advance(24 * 60 * 60_000 + 1);
-    expect(await status()).toMatchObject({ status: 'EXPIRED', reason: 'TIMEOUT' });
+  it('is gone after 30 minutes, open or finished, and the citizen can register again', async () => {
+    ctx.clock.advance(29 * 60_000);
+    expect(await status()).toMatchObject({ status: 'PENDING' });
+    const asked = ctx.csign.registrationQueries.length;
+    ctx.clock.advance(60_000);
+    expect(await status()).toBeNull();
+    expect(ctx.csign.registrationQueries).toHaveLength(asked);
+    await expect(
+      startRegistration(ctx.deps, { citizenPid: CITIZEN_PID, ...CHOICE, userInfo: FORM })
+    ).resolves.toMatchObject({ status: 'PENDING' });
+
+    // A finished one too.
+    csignSays(1, { errorCode: 'errorcode05' });
+    expect(await status()).toMatchObject({ status: 'FAILED' });
+    ctx.clock.advance(30 * 60_000);
+    expect(await status()).toBeNull();
   });
 });

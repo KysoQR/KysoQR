@@ -530,17 +530,20 @@
     "chainMismatchHint": "CSign sent a CA that did not issue this certificate. Signing works, but the Verify page and Adobe will not be able to verify the signature's CA chain.",
     "register": {
       "openButton": "Register a new certificate",
+      "moreHint": "Need a different certificate?",
       "later": "Not now",
       "back": "Back",
       "next": "Continue",
       "stepOf": "Step {{step}} of 3",
       "titles": {
         "intro": "You have no certificate yet",
+        "introMore": "Register another certificate",
         "provider": "Choose a certificate provider",
         "pack": "Choose a certificate pack",
         "form": "Registration details"
       },
       "introText": "This CCCD has no VNeID signing certificate yet. You can register a new one right here.",
+      "introTextMore": "This CCCD already has a VNeID signing certificate. You can still register another one.",
       "introStep1": "Choose a provider and a certificate pack.",
       "introStep2": "Fill in the registration details and send them.",
       "introStep3": "Open the VNeID app: agree to share your details, then activate the certificate once it is issued.",

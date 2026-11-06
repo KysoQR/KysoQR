@@ -752,10 +752,11 @@ export class VneidStore {
   }
 
   /** Requests past their deadline become EXPIRED (SUBMITTING ones FAILED);
-   * registrations too. Returns the number of signing requests changed. */
+   * registrations past theirs are deleted. Returns the number of signing
+   * requests changed. */
   expireOverdue(now: number, submittingTtlMs: number): number {
     const changed = this.expireOverdueWhere('1 = 1', [], now, submittingTtlMs);
-    this.expireRegistrationsWhere('1 = 1', [], now, submittingTtlMs);
+    this.retireRegistrationsWhere('1 = 1', [], now, submittingTtlMs);
     return changed;
   }
 
@@ -767,11 +768,6 @@ export class VneidStore {
         now - keepMs
       );
       this.run('DELETE FROM vneid_webhook_events WHERE received_at <= ?', now - keepMs);
-      this.run(
-        `DELETE FROM vneid_registrations
-         WHERE status NOT IN (${OPEN_REGISTRATION_LIST}) AND finished_at <= ?`,
-        now - keepMs
-      );
       this.run('DELETE FROM vneid_audit WHERE created_at <= ?', now - auditKeepMs);
     });
   }
@@ -779,10 +775,10 @@ export class VneidStore {
   // ---- certificate registrations ----------------------------------------------------------
 
   /** Reserves the citizen's single open registration ('citizen-busy' when one
-   * is open, after first expiring this citizen's overdue ones). */
+   * is open, after first removing this citizen's overdue ones). */
   reserveRegistration(row: NewRegistration, submittingTtlMs: number): 'reserved' | 'citizen-busy' {
     return this.transaction(() => {
-      this.expireRegistrationsWhere(
+      this.retireRegistrationsWhere(
         'citizen_key = ?',
         [row.citizenKey],
         row.createdAt,
@@ -821,20 +817,17 @@ export class VneidStore {
       RegistrationRow | undefined;
   }
 
-  /** The citizen's newest registration: open, or finished less than `keepMs` ago
-   * (overdue ones are expired first). */
+  /** The citizen's newest registration still within its lifetime, open or
+   * finished (overdue ones are deleted first). */
   latestRegistration(
     citizenKey: string,
     now: number,
-    keepMs: number,
     submittingTtlMs: number
   ): RegistrationRow | undefined {
-    this.expireRegistrationsWhere('citizen_key = ?', [citizenKey], now, submittingTtlMs);
+    this.retireRegistrationsWhere('citizen_key = ?', [citizenKey], now, submittingTtlMs);
     return this.statement(
-      `${SELECT_REGISTRATION}
-       WHERE citizen_key = ? AND (status IN (${OPEN_REGISTRATION_LIST}) OR finished_at > ?)
-       ORDER BY created_at DESC LIMIT 1`
-    ).get(citizenKey, now - keepMs) as RegistrationRow | undefined;
+      `${SELECT_REGISTRATION} WHERE citizen_key = ? ORDER BY created_at DESC LIMIT 1`
+    ).get(citizenKey) as RegistrationRow | undefined;
   }
 
   /** CSign accepted the registration and named its transactionCode. */
@@ -908,33 +901,30 @@ export class VneidStore {
     );
   }
 
-  /** Registrations of one citizen started since `since`, whatever came of them. */
-  countRegistrationsSince(citizenKey: string, since: number): number {
-    const row = this.statement(
-      'SELECT COUNT(*) AS count FROM vneid_registrations WHERE citizen_key = ? AND created_at > ?'
-    ).get(citizenKey, since) as { count: number };
-    return Number(row.count);
-  }
-
-  private expireRegistrationsWhere(
+  /**
+   * A registration lives until its `expires_at` -- the 30 minutes a CSign
+   * transaction lasts -- and is then deleted, whatever came of it. Before
+   * that, a submission CSign never answered fails after `submittingTtlMs`.
+   */
+  private retireRegistrationsWhere(
     condition: string,
     params: SQLInputValue[],
     now: number,
     submittingTtlMs: number
-  ): number {
-    return this.run(
+  ): void {
+    this.run(
+      `DELETE FROM vneid_registrations WHERE ${condition} AND expires_at <= ?`,
+      ...params,
+      now
+    );
+    this.run(
       `UPDATE vneid_registrations
-         SET status = CASE WHEN status = 'SUBMITTING' THEN 'FAILED' ELSE 'EXPIRED' END,
-             error_code = COALESCE(error_code,
-               CASE WHEN status = 'SUBMITTING' THEN 'SUBMIT_ABANDONED' ELSE 'LOCAL_TIMEOUT' END),
+         SET status = 'FAILED', error_code = COALESCE(error_code, 'SUBMIT_ABANDONED'),
              updated_at = ?, finished_at = ?
-       WHERE ${condition}
-         AND ((status IN ('PENDING', 'ISSUED') AND expires_at <= ?)
-              OR (status = 'SUBMITTING' AND created_at <= ?))`,
+       WHERE ${condition} AND status = 'SUBMITTING' AND created_at <= ?`,
       now,
       now,
       ...params,
-      now,
       now - submittingTtlMs
     );
   }

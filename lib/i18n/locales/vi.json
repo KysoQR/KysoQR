@@ -528,17 +528,20 @@
     "chainMismatchHint": "CSign gửi kèm CA không phải CA đã cấp chứng thư này. Vẫn ký được, nhưng trang Xác minh và Adobe sẽ không xác minh được chuỗi CA của chữ ký.",
     "register": {
       "openButton": "Đăng ký chứng thư mới",
+      "moreHint": "Muốn dùng chứng thư khác?",
       "later": "Để sau",
       "back": "Quay lại",
       "next": "Tiếp tục",
       "stepOf": "Bước {{step}}/3",
       "titles": {
         "intro": "Bạn chưa có chứng thư số",
+        "introMore": "Đăng ký thêm chứng thư số",
         "provider": "Chọn nhà cung cấp chứng thư",
         "pack": "Chọn gói chứng thư",
         "form": "Thông tin đăng ký"
       },
       "introText": "Số CCCD này chưa có chứng thư ký số qua VNeID. Bạn có thể đăng ký chứng thư mới ngay tại đây.",
+      "introTextMore": "Số CCCD này đã có chứng thư ký số qua VNeID. Bạn vẫn có thể đăng ký thêm một chứng thư mới.",
       "introStep1": "Chọn nhà cung cấp và gói chứng thư.",
       "introStep2": "Điền thông tin đăng ký rồi gửi.",
       "introStep3": "Mở ứng dụng VNeID: đồng ý chia sẻ thông tin, rồi kích hoạt chứng thư khi được cấp.",

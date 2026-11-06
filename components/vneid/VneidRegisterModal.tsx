@@ -30,7 +30,7 @@ const STEP_NUMBER: Record<Exclude<Step, 'intro'>, number> = { provider: 1, pack:
 const SELECT_CLASS =
   'w-full rounded-lg border bg-white px-3 py-1.5 text-sm text-text-main shadow-sm outline-none focus:ring-2 disabled:bg-gray-50';
 const CARD_CLASS =
-  'flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-xs transition';
+  'flex h-full w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-xs transition';
 
 const LIVING_FROM_PERMANENT: [RegistrationField, RegistrationField][] = [
   ['livingPlaceAddress', 'permanentAddress'],
@@ -49,8 +49,9 @@ export function formatPrice(pack: VneidServicePack, language: VneidLanguage, fre
 }
 
 /**
- * "You have no certificate": offers to register one, then provider -> pack ->
- * form -> send. The form is checked here with the same rules the server uses
+ * Registers a VNeID certificate -- for a CCCD that has none ("You have no
+ * certificate"), or another one for a CCCD that has some (`hasCertificates`):
+ * intro, then provider -> pack -> form -> send. The form is checked here with the same rules the server uses
  * (lib/vneid/registrationForm.ts) and kept in memory only: nothing of it is
  * stored in the browser or on the server, and after a reload it is gone --
  * the registration itself is not (the server keeps its status per CCCD).
@@ -63,11 +64,14 @@ export function formatPrice(pack: VneidServicePack, language: VneidLanguage, fre
 export function VneidRegisterModal({
   citizenPid,
   language,
+  hasCertificates = false,
   onClose,
   onRegistered,
 }: {
   citizenPid: string;
   language: VneidLanguage;
+  /** The CCCD already has certificates: the intro says "register another". */
+  hasCertificates?: boolean;
   onClose: () => void;
   onRegistered: (registration: VneidRegistration) => void;
 }) {
@@ -186,7 +190,7 @@ export function VneidRegisterModal({
     back: () => void,
     next: { label: string; onClick: () => void; disabled?: boolean; busy?: boolean }
   ) => (
-    <div className="mt-5 flex items-center justify-between gap-2">
+    <div className="flex items-center justify-between gap-2">
       <button
         type="button"
         onClick={back}
@@ -242,8 +246,13 @@ export function VneidRegisterModal({
       }}
       tabIndex={-1}
     >
-      <div className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl border border-border-subtle bg-white shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-border-subtle px-5 py-4">
+      {/* Narrow for the intro; wide for the lists and the form, so they fit without scrolling. */}
+      <div
+        className={`flex max-h-[94vh] w-full flex-col rounded-2xl border border-border-subtle bg-white shadow-xl ${
+          step === 'intro' ? 'max-w-lg' : 'max-w-5xl'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-border-subtle px-6 py-4">
           <div>
             {step !== 'intro' && (
               <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">
@@ -251,7 +260,9 @@ export function VneidRegisterModal({
               </p>
             )}
             <h2 id="vneid-register-title" className="text-base font-semibold text-text-main">
-              {t(`vneid.register.titles.${step}`)}
+              {t(
+                `vneid.register.titles.${step === 'intro' && hasCertificates ? 'introMore' : step}`
+              )}
             </h2>
           </div>
           <button
@@ -265,13 +276,15 @@ export function VneidRegisterModal({
           </button>
         </div>
 
-        <div className="overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
           {step === 'intro' && (
             <div className="text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-soft text-primary">
                 <Icon icon="lucide:badge-check" className="h-6 w-6" />
               </div>
-              <p className="mt-3 text-sm text-text-main">{t('vneid.register.introText')}</p>
+              <p className="mt-3 text-sm text-text-main">
+                {t(hasCertificates ? 'vneid.register.introTextMore' : 'vneid.register.introText')}
+              </p>
               <ol className="mt-3 list-decimal space-y-1 pl-5 text-left text-xs text-text-muted">
                 <li>{t('vneid.register.introStep1')}</li>
                 <li>{t('vneid.register.introStep2')}</li>
@@ -323,7 +336,7 @@ export function VneidRegisterModal({
                 <div
                   role="radiogroup"
                   aria-label={t('vneid.register.titles.provider')}
-                  className="space-y-1.5"
+                  className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
                 >
                   {/* By position and identity, not code: CSign codes need not be unique. */}
                   {providers.map((item, index) =>
@@ -335,7 +348,9 @@ export function VneidRegisterModal({
                       },
                       `${item.provider}-${index}`,
                       <>
-                        <span className="block font-semibold text-text-main">{item.name}</span>
+                        <span className="line-clamp-2 font-semibold text-text-main">
+                          {item.name}
+                        </span>
                         <span className="block text-text-muted">
                           {item.provider} ·{' '}
                           {t('vneid.register.packCount', { count: item.packs.length })}
@@ -345,11 +360,6 @@ export function VneidRegisterModal({
                   )}
                 </div>
               )}
-              {footer(() => setStep('intro'), {
-                label: t('vneid.register.next'),
-                onClick: () => setStep('pack'),
-                disabled: !provider,
-              })}
             </>
           )}
 
@@ -362,7 +372,7 @@ export function VneidRegisterModal({
                 <div
                   role="radiogroup"
                   aria-label={t('vneid.register.titles.pack')}
-                  className="space-y-1.5"
+                  className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
                 >
                   {/* CSign lists some packs twice under one code (seen: VNPT 18130). */}
                   {provider.packs.map((item, index) =>
@@ -372,7 +382,9 @@ export function VneidRegisterModal({
                       `${item.code}-${index}`,
                       <>
                         <span className="flex items-baseline justify-between gap-2">
-                          <span className="font-semibold text-text-main">{item.name}</span>
+                          <span className="line-clamp-2 font-semibold text-text-main">
+                            {item.name}
+                          </span>
                           <span
                             className={`shrink-0 font-semibold ${item.free ? 'text-green-700' : 'text-text-main'}`}
                           >
@@ -394,11 +406,6 @@ export function VneidRegisterModal({
                   {t('vneid.register.paidNote', { price: formatPrice(pack, language, freeLabel) })}
                 </p>
               )}
-              {footer(() => setStep('provider'), {
-                label: t('vneid.register.next'),
-                onClick: () => setStep('form'),
-                disabled: !pack,
-              })}
             </>
           )}
 
@@ -408,7 +415,7 @@ export function VneidRegisterModal({
                 {provider.name} · {pack.name} · {formatPrice(pack, language, freeLabel)}
               </p>
               <p className="mb-3 text-[11px] text-text-muted">{t('vneid.register.formHint')}</p>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <TextField
                   id="vneid-register-citizenPid"
                   label={t('vneid.register.fields.citizenPid')}
@@ -455,18 +462,18 @@ export function VneidRegisterModal({
                 {field('idCardExpireDate', { type: 'date' })}
               </div>
 
-              <fieldset className="mt-4">
+              <fieldset className="mt-3">
                 <legend className="text-xs font-semibold text-text-main">
                   {t('vneid.register.permanentTitle')}
                 </legend>
-                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <div className="mt-1 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="sm:col-span-2">{field('permanentAddress')}</div>
                   {field('permanentVillageText')}
                   {field('permanentCityText')}
                 </div>
               </fieldset>
 
-              <fieldset className="mt-4">
+              <fieldset className="mt-3">
                 <legend className="text-xs font-semibold text-text-main">
                   {t('vneid.register.livingTitle')}
                 </legend>
@@ -480,7 +487,7 @@ export function VneidRegisterModal({
                   />
                   {t('vneid.register.sameAddress')}
                 </label>
-                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <div className="mt-1 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="sm:col-span-2">
                     {field('livingPlaceAddress', { disabled: sameAddress })}
                   </div>
@@ -489,7 +496,7 @@ export function VneidRegisterModal({
                 </div>
               </fieldset>
 
-              <label className="mt-4 flex items-start gap-2 text-xs text-text-secondary">
+              <label className="mt-3 flex items-start gap-2 text-xs text-text-secondary">
                 <input
                   type="checkbox"
                   className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
@@ -499,23 +506,42 @@ export function VneidRegisterModal({
                 />
                 <span>{t('vneid.register.consent')}</span>
               </label>
-              {Object.values(problems).some(Boolean) && (
-                <p className="mt-2 text-xs text-error-text">{t('vneid.register.fixProblems')}</p>
-              )}
-              {submitError && (
-                <div className="mt-3 rounded-md border border-error-border bg-error-bg px-3 py-2 text-xs text-error-text">
-                  {submitError}
-                </div>
-              )}
-              {footer(() => setStep('pack'), {
+            </>
+          )}
+        </div>
+
+        {/* Outside the scrolling area: the buttons always show. */}
+        {step !== 'intro' && (
+          <div className="space-y-2 border-t border-border-subtle px-6 py-3">
+            {step === 'form' && Object.values(problems).some(Boolean) && (
+              <p className="text-xs text-error-text">{t('vneid.register.fixProblems')}</p>
+            )}
+            {step === 'form' && submitError && (
+              <div className="rounded-md border border-error-border bg-error-bg px-3 py-2 text-xs text-error-text">
+                {submitError}
+              </div>
+            )}
+            {step === 'provider' &&
+              footer(() => setStep('intro'), {
+                label: t('vneid.register.next'),
+                onClick: () => setStep('pack'),
+                disabled: !provider,
+              })}
+            {step === 'pack' &&
+              footer(() => setStep('provider'), {
+                label: t('vneid.register.next'),
+                onClick: () => setStep('form'),
+                disabled: !pack,
+              })}
+            {step === 'form' &&
+              footer(() => setStep('pack'), {
                 label: submitting ? t('vneid.register.submitting') : t('vneid.register.submit'),
                 onClick: () => void submit(),
                 disabled: !consent || submitting,
                 busy: submitting,
               })}
-            </>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>,
     document.body

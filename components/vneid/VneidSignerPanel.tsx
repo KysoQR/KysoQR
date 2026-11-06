@@ -41,7 +41,8 @@ export const isVneidSignerReady = (value: VneidSignerValue) =>
  * sign. A certificate under the CSign UAT test root is marked as such.
  *
  * A CCCD without a certificate is offered to register one
- * (VneidRegisterModal). The registration's status is kept by the server per
+ * (VneidRegisterModal); one that has certificates can still register another
+ * from under the list. The registration's status is kept by the server per
  * CCCD, so "Get certificates" also asks for it: after a reload it shows up
  * again, and once it completes the new certificate is fetched and picked.
  */
@@ -283,26 +284,25 @@ export function VneidSignerPanel({
             })}
           </div>
           {credentials.every((credential) => !credential.usable) ? (
-            <p className="mt-1 text-xs text-error-text">
-              {t('vneid.noUsable')}
-              {!registrationOpen && (
-                <>
-                  {' '}
-                  <button
-                    type="button"
-                    onClick={() => setShowRegister(true)}
-                    disabled={disabled}
-                    className="font-semibold text-primary underline disabled:opacity-60"
-                  >
-                    {t('vneid.register.openButton')}
-                  </button>
-                </>
-              )}
-            </p>
+            <p className="mt-1 text-xs text-error-text">{t('vneid.noUsable')}</p>
           ) : (
             value.credentialId === null && (
               <p className="mt-1 text-xs text-text-muted">{t('vneid.selectCredential')}</p>
             )
+          )}
+          {/* Registering is open to anyone, with or without a certificate. */}
+          {!registrationOpen && (
+            <p className="mt-1.5 text-xs text-text-muted">
+              {t('vneid.register.moreHint')}{' '}
+              <button
+                type="button"
+                onClick={() => setShowRegister(true)}
+                disabled={disabled}
+                className="font-semibold text-primary underline disabled:opacity-60"
+              >
+                {t('vneid.register.openButton')}
+              </button>
+            </p>
           )}
         </div>
       )}
@@ -311,6 +311,7 @@ export function VneidSignerPanel({
         <VneidRegisterModal
           citizenPid={value.citizenPid}
           language={language}
+          hasCertificates={credentials !== null && credentials.length > 0}
           onClose={() => setShowRegister(false)}
           onRegistered={(started) => {
             trackRegistration(started);

@@ -863,9 +863,9 @@ paths:
         Sau đó CSign gửi yêu cầu **chia sẻ thông tin** tới app VNeID của người dân; người dân đồng ý, CA cấp chứng thư,
         rồi người dân **kích hoạt** chứng thư trong app. Theo dõi bằng `/api/vneid/registrations/status`.
 
-        - Form (`userInfo`) chỉ được gửi tới CSign: không lưu, không ghi log, không trả lại. Server chỉ giữ nhà cung cấp, gói, trạng thái và mã lỗi của CSign, theo HMAC của CCCD, tới khi có kết quả (rồi thêm 24 giờ).
+        - Form (`userInfo`) chỉ được gửi tới CSign: không lưu, không ghi log, không trả lại. Server chỉ giữ nhà cung cấp, gói, trạng thái và mã lỗi của CSign, theo HMAC của CCCD, trong **30 phút** kể từ lúc gửi (thời gian sống của một giao dịch CSign, `errorcode07`), rồi xoá hẳn dù kết quả ra sao.
         - Ngày gửi dạng `YYYY-MM-DD`; server đổi sang `dd/MM/yyyy` cho CSign.
-        - Mỗi CCCD một yêu cầu đang mở, tối đa 3 yêu cầu / 24 giờ.
+        - Mỗi CCCD một yêu cầu đang mở; tối đa 3 lần gửi / 24 giờ (đếm trong bộ nhớ server, về 0 khi khởi động lại).
         - Bắt buộc header `Origin`, `Content-Length` (tối đa 8KB) và `x-turnstile-token` khi server bật Turnstile.
         - Rate limit: 5 request / 10 phút / IP.
 
@@ -928,7 +928,7 @@ paths:
         '429':
           description: |
             `RATE_LIMITED`: vượt rate limit theo IP.
-            `VNEID_REGISTRATION_LIMITED`: CCCD đã gửi 3 yêu cầu đăng ký trong 24 giờ.
+            `VNEID_REGISTRATION_LIMITED`: CCCD đã gửi 3 lần đăng ký trong 24 giờ.
             Cả hai có header `Retry-After`.
           headers:
             Retry-After:
@@ -961,7 +961,7 @@ paths:
       operationId: getVneidRegistration
       summary: Trạng thái đăng ký chứng thư của một CCCD
       description: |
-        Yêu cầu đăng ký chứng thư của CCCD: đang mở, hoặc đã kết thúc trong 24 giờ qua. Trả `null` nếu không có.
+        Yêu cầu đăng ký chứng thư của CCCD trong 30 phút kể từ lúc gửi (đang mở hoặc đã kết thúc). Trả `null` nếu không có; quá 30 phút yêu cầu bị xoá nên cũng trả `null`.
         Tra theo CCCD nên sau khi tải lại trang, nhập lại CCCD là thấy lại yêu cầu. Trang gọi route này vài giây một lần trong lúc chờ.
 
         - Server hỏi `credentials/get-status` của CSign tối đa 5 giây/lần trong 30 phút đầu, sau đó 1 phút/lần.
@@ -1871,7 +1871,7 @@ components:
         expiresAt:
           type: string
           format: date-time
-          description: Server bỏ theo dõi yêu cầu còn mở sau thời điểm này (24 giờ).
+          description: Lúc gửi + 30 phút (thời gian sống của một giao dịch CSign). Sau thời điểm này yêu cầu bị xoá, dù đang mở hay đã kết thúc.
         serialNumber:
           type: string
           description: Serial của chứng thư mới, là `credentialId` dùng khi ký (chỉ khi `COMPLETED`).

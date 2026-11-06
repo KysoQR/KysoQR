@@ -863,9 +863,9 @@ paths:
         CSign then asks the citizen, in the VNeID app, to **share their details**; the citizen agrees, the CA issues the certificate,
         and the citizen **activates** it in the app. Follow it with `/api/vneid/registrations/status`.
 
-        - The form (`userInfo`) goes to CSign only: it is not stored, not logged, not sent back. The server keeps the provider, pack, status and CSign's codes under an HMAC of the CCCD until the outcome is known (then 24 more hours).
+        - The form (`userInfo`) goes to CSign only: it is not stored, not logged, not sent back. The server keeps the provider, pack, status and CSign's codes under an HMAC of the CCCD for **30 minutes** from sending (the lifetime of a CSign transaction, `errorcode07`), then deletes them, whatever the outcome.
         - Dates are sent as `YYYY-MM-DD`; the server turns them into `dd/MM/yyyy` for CSign.
-        - One open request per CCCD, at most 3 requests / 24 hours.
+        - One open request per CCCD; at most 3 tries / 24 hours (counted in server memory, reset on restart).
         - Requires the `Origin` header, `Content-Length` (at most 8 KB) and `x-turnstile-token` when the server has Turnstile on.
         - Rate limit: 5 requests / 10 minutes / IP.
 
@@ -928,7 +928,7 @@ paths:
         '429':
           description: |
             `RATE_LIMITED`: the per-IP rate limit is exceeded.
-            `VNEID_REGISTRATION_LIMITED`: the CCCD sent 3 registrations in 24 hours.
+            `VNEID_REGISTRATION_LIMITED`: the CCCD tried 3 registrations in 24 hours.
             Both come with a `Retry-After` header.
           headers:
             Retry-After:
@@ -961,7 +961,7 @@ paths:
       operationId: getVneidRegistration
       summary: Certificate registration status of a CCCD
       description: |
-        The CCCD's certificate registration: open, or finished in the last 24 hours; `null` when there is none.
+        The CCCD's certificate registration within 30 minutes of sending (open or finished); `null` when there is none. After 30 minutes it is deleted, so `null` too.
         Looked up by CCCD, so after a page reload typing the CCCD again finds the request. The page calls this every few seconds while waiting.
 
         - The server asks CSign `credentials/get-status` at most every 5 seconds for the first 30 minutes, then every minute.
@@ -1874,7 +1874,7 @@ components:
         expiresAt:
           type: string
           format: date-time
-          description: The server stops following a still-open request after this time (24 hours).
+          description: Sending time + 30 minutes (the lifetime of a CSign transaction). After this the registration is deleted, open or finished.
         serialNumber:
           type: string
           description: Serial of the new certificate, its `credentialId` for signing (only when `COMPLETED`).

@@ -249,7 +249,7 @@ describe('VneidStore on disk', () => {
     try {
       expect(upgraded.get(row.id)?.timestampToken).toBeNull();
       expect(upgraded.countRequestsSince(0)).toBe(1);
-      expect(upgraded.countRegistrationsSince('citizen', 0)).toBe(0);
+      expect(upgraded.latestRegistration('citizen', T0, TTL)).toBeUndefined();
     } finally {
       upgraded.close();
     }
@@ -260,7 +260,8 @@ describe('VneidStore on disk', () => {
 });
 
 describe('VneidStore registrations', () => {
-  const DAY = 24 * 60 * MIN;
+  /** A CSign transaction lives 30 minutes; so does a registration. */
+  const LIFETIME = 30 * MIN;
   let store: VneidStore;
   beforeEach(() => {
     store = VneidStore.open(':memory:');
@@ -280,7 +281,7 @@ describe('VneidStore registrations', () => {
       servicePackMonths: 12,
       unitPrice: 0,
       createdAt: T0,
-      expiresAt: T0 + DAY,
+      expiresAt: (overrides.createdAt ?? T0) + LIFETIME,
       ...overrides,
     };
   }
@@ -299,7 +300,6 @@ describe('VneidStore registrations', () => {
       true
     );
     expect(store.reserveRegistration(registration({ createdAt: T0 + MIN }), TTL)).toBe('reserved');
-    expect(store.countRegistrationsSince('citizen-a', T0 - 1)).toBe(2);
   });
 
   it('only moves forward, and is found again by citizen after a reload', () => {
@@ -312,7 +312,7 @@ describe('VneidStore registrations', () => {
     expect(store.claimRegistrationCheck(row.id, T0 + 1000, 5000)).toBe(true);
     expect(store.claimRegistrationCheck(row.id, T0 + 2000, 5000)).toBe(false);
     expect(store.markRegistrationProgress(row.id, 'ISSUED', 3, T0 + 3000)).toBe(true);
-    expect(store.latestRegistration('citizen-a', T0 + 4000, DAY, TTL)).toMatchObject({
+    expect(store.latestRegistration('citizen-a', T0 + 4000, TTL)).toMatchObject({
       id: row.id,
       status: 'ISSUED',
       transactionCode: 'ra-1',
@@ -325,23 +325,26 @@ describe('VneidStore registrations', () => {
     );
     expect(store.finishRegistration(row.id, 'FAILED', {}, done + 1)).toBe(false);
     expect(store.markRegistrationProgress(row.id, 'PENDING', 2, done + 2)).toBe(false);
-    expect(store.latestRegistration('citizen-a', done + 3, DAY, TTL)).toMatchObject({
+    expect(store.latestRegistration('citizen-a', done + 3, TTL)).toMatchObject({
       status: 'COMPLETED',
       serialNumber: 'AB12',
       finishedAt: done,
     });
-    // A finished one stays visible for a day, then is swept.
-    expect(store.latestRegistration('citizen-a', done + DAY + 1, DAY, TTL)).toBeUndefined();
-    store.sweep(done + DAY, DAY, 90 * DAY);
+    // Finished or not, it is gone once its 30 minutes are over.
+    expect(store.latestRegistration('citizen-a', T0 + LIFETIME, TTL)).toBeUndefined();
     expect(store.getRegistration(row.id)).toBeUndefined();
   });
 
-  it('expires overdue registrations; an abandoned submission fails', () => {
+  it('deletes registrations after 30 minutes, whatever their state; an abandoned submission fails first', () => {
     const abandoned = registration();
     store.reserveRegistration(abandoned, TTL);
     const open = registration({ citizenKey: 'citizen-b' });
     store.reserveRegistration(open, TTL);
     store.markRegistrationSubmitted(open.id, 'ra-b', T0);
+    const failed = registration({ citizenKey: 'citizen-c' });
+    store.reserveRegistration(failed, TTL);
+    store.markRegistrationSubmitted(failed.id, 'ra-c', T0);
+    store.finishRegistration(failed.id, 'FAILED', { errorCode: 'errorcode05' }, T0 + MIN);
 
     store.expireOverdue(T0 + 3 * MIN, TTL);
     expect(store.getRegistration(abandoned.id)).toMatchObject({
@@ -349,9 +352,31 @@ describe('VneidStore registrations', () => {
       errorCode: 'SUBMIT_ABANDONED',
     });
     expect(store.getRegistration(open.id)?.status).toBe('PENDING');
-    expect(store.latestRegistration('citizen-b', T0 + DAY, DAY, TTL)).toMatchObject({
-      status: 'EXPIRED',
-      errorCode: 'LOCAL_TIMEOUT',
-    });
+    expect(store.getRegistration(failed.id)?.status).toBe('FAILED');
+
+    store.expireOverdue(T0 + LIFETIME, TTL);
+    for (const row of [abandoned, open, failed]) {
+      expect(store.getRegistration(row.id)).toBeUndefined();
+    }
+    // The citizen is free again: a new registration can start.
+    expect(
+      store.reserveRegistration(
+        registration({ citizenKey: 'citizen-b', createdAt: T0 + LIFETIME }),
+        TTL
+      )
+    ).toBe('reserved');
+  });
+
+  it('frees a citizen whose open registration ran out, even before the sweep', () => {
+    const open = registration();
+    store.reserveRegistration(open, TTL);
+    store.markRegistrationSubmitted(open.id, 'ra-1', T0);
+    expect(store.reserveRegistration(registration({ createdAt: T0 + MIN }), TTL)).toBe(
+      'citizen-busy'
+    );
+    expect(store.reserveRegistration(registration({ createdAt: T0 + LIFETIME }), TTL)).toBe(
+      'reserved'
+    );
+    expect(store.getRegistration(open.id)).toBeUndefined();
   });
 });

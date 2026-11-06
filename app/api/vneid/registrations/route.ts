@@ -1,4 +1,5 @@
 import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
+import { citizenKey } from '@/lib/vneid/crypto';
 import { VneidError } from '@/lib/vneid/errors';
 import {
   checkOrigin,
@@ -18,6 +19,9 @@ export const runtime = 'nodejs';
 
 /** CCCD, provider, pack and the form: a few hundred bytes. */
 const MAX_BODY_BYTES = 8 * 1024;
+/** Each registration sends a notification to the citizen's phone. Counted in
+ * memory: registrations themselves are deleted after 30 minutes. */
+const PER_CITIZEN = { limit: 3, windowMs: 24 * 60 * 60_000 };
 
 const ERRORS = documentedErrors([
   { error: 'VNEID_FORBIDDEN_ORIGIN' },
@@ -73,6 +77,15 @@ export async function POST(request: Request): Promise<Response> {
     const citizenPid = body?.citizenPid;
     if (typeof citizenPid !== 'string' || !isValidCitizenPid(citizenPid.trim())) {
       throw new VneidError('VNEID_INVALID_INPUT', 'citizenPid is not a valid CCCD number');
+    }
+    const perCitizen = checkRateLimit(
+      `vneid-register-citizen:${citizenKey(deps.keys, citizenPid.trim())}`,
+      PER_CITIZEN
+    );
+    if (!perCitizen.allowed) {
+      throw new VneidError('VNEID_REGISTRATION_LIMITED', 'too many registrations for this CCCD', {
+        retryAfterSeconds: perCitizen.retryAfterSeconds,
+      });
     }
     const registration = await startRegistration(deps, {
       citizenPid: citizenPid.trim(),

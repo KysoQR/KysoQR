@@ -43,25 +43,14 @@ export const isSignedStatus = (status: VneidStatus) =>
   status === 'SIGNED' || status === 'FINALIZED';
 
 /**
- * How often the page asks /api/vneid/registrations/status: every 5 s for the
- * first 30 minutes (the citizen is on the phone, sharing details and
- * activating), every 30 s after that; never sooner than a 429's Retry-After.
+ * How often the page asks /api/vneid/registrations/status: every 5 s (the
+ * citizen is on the phone, sharing details and activating; a registration
+ * lives 30 minutes at most), never sooner than a 429's Retry-After.
  */
-export const REGISTRATION_FAST_POLL_MS = 5_000;
-export const REGISTRATION_SLOW_POLL_MS = 30_000;
-const REGISTRATION_FAST_WINDOW_MS = 30 * 60_000;
+export const REGISTRATION_POLL_MS = 5_000;
 
-export function nextRegistrationPollDelay(input: {
-  now: number;
-  createdAt: number;
-  retryAfterSeconds?: number | undefined;
-}): number {
-  const base =
-    input.now - input.createdAt < REGISTRATION_FAST_WINDOW_MS
-      ? REGISTRATION_FAST_POLL_MS
-      : REGISTRATION_SLOW_POLL_MS;
-  return Math.max(base, (input.retryAfterSeconds ?? 0) * 1000);
-}
+export const nextRegistrationPollDelay = (retryAfterSeconds?: number) =>
+  Math.max(REGISTRATION_POLL_MS, (retryAfterSeconds ?? 0) * 1000);
 
 /** Still waiting on the citizen or the CA: keep asking. */
 export const isRegistrationOpen = (status: VneidRegistrationStatus) =>

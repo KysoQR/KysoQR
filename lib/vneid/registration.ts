@@ -14,29 +14,26 @@ import type { RegistrationRow, RegistrationStatus } from './store';
  * CSign then asks the citizen, on VNeID, to share their details; the CA
  * issues the certificate and the citizen activates it in the app. That takes
  * minutes, so the registration is kept in SQLite under the citizen's key
- * (an HMAC of the CCCD, never the number) until it ends: reloading the page and
- * typing the same CCCD finds it again. Only what the page shows is kept --
- * provider, pack, status, CSign's codes -- never the form.
+ * (an HMAC of the CCCD, never the number): reloading the page and typing the
+ * same CCCD finds it again. Only what the page shows is kept -- provider,
+ * pack, status, CSign's codes -- never the form, and only for the 30 minutes a
+ * CSign transaction lives (errorcode07); after that it is deleted, whatever
+ * came of it, and the citizen can register again.
  *
  * Status comes from get-status, asked when the page asks and at most every few
  * seconds (no webhook needed). Anyone who types a CCCD sees the same as for
  * /credentials: a status, never a name.
  */
 
-/** An open registration that never ends at CSign is dropped after a day. */
-export const REGISTRATION_TTL_MS = 24 * 60 * 60_000;
-/** A finished one stays visible this long. */
-const KEEP_FINISHED_MS = 24 * 60 * 60_000;
+/** A CSign transaction lasts 30 minutes in all (spec V.4, errorcode07): the
+ * registration is deleted then, open or finished. */
+export const REGISTRATION_TTL_MS = 30 * 60_000;
 const SUBMITTING_TTL_MS = 2 * 60_000;
 const PROVIDERS_CACHE_MS = 10 * 60_000;
-/** get-status at most every 5 s while the citizen is likely on the phone, then every minute. */
-const FAST_CHECK_MS = 5_000;
-const SLOW_CHECK_MS = 60_000;
-const FAST_WINDOW_MS = 30 * 60_000;
+/** get-status at most this often per registration. */
+const CHECK_INTERVAL_MS = 5_000;
 /** CSign may not know a fresh transactionCode yet. */
 const NOT_FOUND_GRACE_MS = 2 * 60_000;
-const PER_CITIZEN_PER_DAY = 3;
-const DAY_MS = 24 * 60 * 60_000;
 
 export interface ServicePackView {
   code: string;
@@ -188,11 +185,6 @@ export async function startRegistration(
 
   const key = citizenKey(deps.keys, input.citizenPid);
   const now = deps.now();
-  if (deps.store.countRegistrationsSince(key, now - DAY_MS) >= PER_CITIZEN_PER_DAY) {
-    throw new VneidError('VNEID_REGISTRATION_LIMITED', 'daily registrations reached', {
-      retryAfterSeconds: 60 * 60,
-    });
-  }
   const id = randomUUID();
   const requestId = randomUUID();
   const reserved = deps.store.reserveRegistration(
@@ -273,17 +265,16 @@ function applyStatus(deps: VneidDeps, row: RegistrationRow, result: Registration
   }
 }
 
-/** The citizen's current (or just finished) registration, refreshed from CSign. */
+/** The citizen's registration of the last 30 minutes (open or finished), refreshed from CSign. */
 export async function getRegistration(
   deps: VneidDeps,
   citizenPid: string
 ): Promise<RegistrationView | null> {
   const key = citizenKey(deps.keys, citizenPid);
   const now = deps.now();
-  const row = deps.store.latestRegistration(key, now, KEEP_FINISHED_MS, SUBMITTING_TTL_MS);
+  const row = deps.store.latestRegistration(key, now, SUBMITTING_TTL_MS);
   if (!row) return null;
-  const interval = now - row.createdAt < FAST_WINDOW_MS ? FAST_CHECK_MS : SLOW_CHECK_MS;
-  if (row.transactionCode && deps.store.claimRegistrationCheck(row.id, now, interval)) {
+  if (row.transactionCode && deps.store.claimRegistrationCheck(row.id, now, CHECK_INTERVAL_MS)) {
     try {
       applyStatus(deps, row, await deps.csign.getRegistrationStatus(row.transactionCode));
     } catch (error) {
