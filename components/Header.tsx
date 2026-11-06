@@ -40,6 +40,13 @@ const NAV_ITEMS: {
     labelKey: 'nav.openSourceLabel',
   },
   {
+    key: 'vneid',
+    href: '/vneid/',
+    matchPath: '/vneid',
+    kickerKey: 'nav.vneidKicker',
+    labelKey: 'nav.vneidLabel',
+  },
+  {
     key: 'api',
     href: '/api/',
     matchPath: '/api',

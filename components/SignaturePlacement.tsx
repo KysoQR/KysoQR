@@ -119,7 +119,6 @@ function SignaturePlacementInner(
   }: SignaturePlacementProps,
   ref: React.Ref<SignaturePlacementHandle>
 ) {
-  const { t } = useTranslation();
   const stageRef = useRef<HTMLDivElement | null>(null);
   const pdfRef = useRef<PDFDocumentProxy | null>(null);
   const canvasRefs = useRef(new Map<number, HTMLCanvasElement>());
@@ -132,7 +131,6 @@ function SignaturePlacementInner(
   const endGestureRef = useRef<(() => void) | null>(null);
   const zoomFactorRef = useRef(0.8);
 
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [pageAspect, setPageAspect] = useState<Record<number, number>>({});
@@ -249,7 +247,6 @@ function SignaturePlacementInner(
   useEffect(() => {
     let cancelled = false;
     const loadPdf = async () => {
-      setLoading(true);
       setError(null);
       setPageCount(null);
       setPageAspect({});
@@ -290,8 +287,6 @@ function SignaturePlacementInner(
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Unable to read PDF preview');
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     };
     loadPdf();
@@ -650,32 +645,11 @@ function SignaturePlacementInner(
   );
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-        <span className={isPlacingNew && !loading ? 'font-medium text-primary-strong' : 'italic'}>
-          {loading
-            ? t('sign.renderingPreview')
-            : isPlacingNew
-              ? t('sign.placingNewFieldHint')
-              : t('sign.clickOrDrag')}
-        </span>
-        {fields.length === 0 && (
-          <span className="text-text-muted">{t('sign.addFirstFieldHint')}</span>
-        )}
-      </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+    <div className="flex flex-1 flex-col">
+      {error && <p className="bg-red-950/80 px-4 py-1.5 text-xs text-red-300">{error}</p>}
       <div
         ref={stageRef}
-        // Dark background (was white) -- makes each white PDF page's own
-        // edges/boundaries visually obvious against the surrounding stage,
-        // especially once zoomed in and there's real empty space around/
-        // between pages (matches the convention most PDF viewers use). No
-        // longer scroll-contained -- grows to its natural height and scrolls
-        // along with the page (see SigningWizard.tsx's single page scroll).
-        // `overflow-x-auto`: zoomed past 100% a page is wider than the stage;
-        // scroll it sideways here instead of letting it spill over the
-        // signer column next to it (it used to, from ~150% zoom up).
-        className="relative mx-auto w-full max-w-none space-y-4 overflow-x-auto rounded-md border border-gray-700 bg-neutral-900 p-2"
+        className="relative mx-auto min-h-[calc(100svh-6.5rem)] w-full max-w-none flex-1 space-y-4 overflow-x-auto bg-[#525659] px-6 py-2"
       >
         {pageNumbers.map((pageNumber) => (
           <PdfPageBlock

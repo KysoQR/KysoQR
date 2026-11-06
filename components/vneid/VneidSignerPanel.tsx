@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import { TextField } from '@/components/TextField';
 import { InlineSpinner } from '@/components/signing/Spinners';
+import { VneidCertificateModal } from '@/components/vneid/VneidCertificateModal';
 import { VneidRegisterModal } from '@/components/vneid/VneidRegisterModal';
 import { VneidRegistrationCard } from '@/components/vneid/VneidRegistrationCard';
 import { isPlausibleCitizenPid, isRegistrationOpen } from '@/lib/vneid/client/polling';
@@ -62,6 +63,7 @@ export function VneidSignerPanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [noCertificate, setNoCertificate] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
+  const [showCertModal, setShowCertModal] = useState(false);
   const {
     registration,
     pollError,
@@ -89,6 +91,7 @@ export function VneidSignerPanel({
     setNotice(null);
     setNoCertificate(false);
     setShowRegister(false);
+    setShowCertModal(false);
     clearRegistration();
     onChange({ ...value, citizenPid: digits, credentialId: null });
   };
@@ -117,6 +120,9 @@ export function VneidSignerPanel({
         ...value,
         credentialId: picked ? select : usable.length === 1 ? usable[0]!.credentialId : null,
       });
+      if (list.length > 0) {
+        setShowCertModal(true);
+      }
     } else {
       setCredentials(null);
       onChange({ ...value, credentialId: null });
@@ -134,6 +140,10 @@ export function VneidSignerPanel({
 
   const formatDate = (iso: string | null | undefined) =>
     iso ? new Date(iso).toLocaleDateString(language === 'en' ? 'en-GB' : 'vi-VN') : '?';
+
+  const selectedCredential = credentials?.find(
+    (credential) => credential.credentialId === value.credentialId
+  );
 
   return (
     <div className="space-y-2">
@@ -209,59 +219,81 @@ export function VneidSignerPanel({
       )}
 
       {credentials && (
-        <div>
-          <span className="block text-xs font-medium text-text-main">
-            {t('vneid.credentialsTitle')}
-          </span>
-          <div
-            role="radiogroup"
-            aria-label={t('vneid.credentialsTitle')}
-            className="mt-1 space-y-1.5"
-          >
-            {credentials.map((credential) => {
-              const active = value.credentialId === credential.credentialId;
-              return (
+        <div className="space-y-1.5">
+          {credentials.every((credential) => !credential.usable) ? (
+            <div className="rounded-lg border border-border-subtle bg-surface-soft p-3 text-xs">
+              <p className="font-medium text-error-text">
+                {t('vneid.noUsable')}
+                {!registrationOpen && (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      onClick={() => setShowRegister(true)}
+                      disabled={disabled}
+                      className="font-semibold text-primary underline disabled:opacity-60"
+                    >
+                      {t('vneid.register.openButton')}
+                    </button>
+                  </>
+                )}
+              </p>
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between pb-1">
+                <span className="block text-xs font-medium text-text-main">
+                  {t('vneid.selectedCredentialLabel')}
+                </span>
                 <button
-                  key={credential.credentialId}
                   type="button"
-                  role="radio"
-                  aria-checked={active}
-                  disabled={disabled || !credential.usable}
-                  onClick={() => onChange({ ...value, credentialId: credential.credentialId })}
-                  className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-xs transition disabled:cursor-not-allowed ${
-                    active
-                      ? 'border-primary bg-surface-soft'
-                      : credential.usable
-                        ? 'border-border-subtle bg-white hover:border-primary'
-                        : 'border-border-subtle bg-gray-50 opacity-60'
-                  }`}
+                  onClick={() => setShowCertModal(true)}
+                  disabled={disabled}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline disabled:opacity-60"
+                >
+                  <span>{t('vneid.changeCredential')}</span>
+                  <Icon icon="lucide:chevron-right" className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {selectedCredential ? (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setShowCertModal(true)}
+                  className="group flex w-full items-start gap-2.5 rounded-xl border border-primary bg-surface-soft p-3 text-left text-xs shadow-xs transition hover:bg-surface-soft-strong disabled:cursor-not-allowed"
                 >
                   <Icon
-                    icon={active ? 'lucide:circle-dot' : 'lucide:circle'}
-                    className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-primary' : 'text-text-muted'}`}
+                    icon="lucide:circle-dot"
+                    className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                   />
                   <span className="min-w-0 flex-1 space-y-0.5">
-                    <span className="block truncate font-semibold text-text-main">
-                      {t('vneid.issuedBy', { issuer: credential.issuer ?? '?' })}
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate font-semibold text-text-main">
+                        {t('vneid.issuedBy', { issuer: selectedCredential.issuer ?? '?' })}
+                      </span>
+                      <span className="shrink-0 text-[11px] font-medium text-primary transition-transform group-hover:translate-x-0.5">
+                        {t('vneid.changeCredential')} →
+                      </span>
                     </span>
                     <span className="block text-text-muted">
                       {t('vneid.validity', {
-                        from: formatDate(credential.validFrom),
-                        to: formatDate(credential.validTo),
+                        from: formatDate(selectedCredential.validFrom),
+                        to: formatDate(selectedCredential.validTo),
                       })}
-                      {credential.keyBits
-                        ? ` · ${t('vneid.keyBits', { bits: credential.keyBits })}`
+                      {selectedCredential.keyBits
+                        ? ` · ${t('vneid.keyBits', { bits: selectedCredential.keyBits })}`
                         : ''}
                     </span>
                     <span className="block truncate font-mono text-[10px] text-text-muted">
-                      {credential.credentialId}
+                      {selectedCredential.credentialId}
                     </span>
-                    {!credential.usable && credential.reason && (
+                    {!selectedCredential.usable && selectedCredential.reason && (
                       <span className="block font-medium text-error-text">
-                        {t(`vneid.unusable.${credential.reason}`)}
+                        {t(`vneid.unusable.${selectedCredential.reason}`)}
                       </span>
                     )}
-                    {credential.usable && !credential.chainVerified && (
+                    {selectedCredential.usable && !selectedCredential.chainVerified && (
                       <span
                         className="mt-0.5 inline-flex rounded-full bg-warning-bg px-2 py-0.5 text-[10px] font-medium text-warning-text"
                         title={t('vneid.chainMismatchHint')}
@@ -269,42 +301,44 @@ export function VneidSignerPanel({
                         {t('vneid.chainMismatch')}
                       </span>
                     )}
-                    {credential.usable && credential.chainVerified && !credential.rootTrusted && (
-                      <span
-                        className="mt-0.5 inline-flex rounded-full bg-warning-bg px-2 py-0.5 text-[10px] font-medium text-warning-text"
-                        title={t('vneid.testRootHint')}
-                      >
-                        {t('vneid.testRoot')}
-                      </span>
-                    )}
+                    {selectedCredential.usable &&
+                      selectedCredential.chainVerified &&
+                      !selectedCredential.rootTrusted && (
+                        <span
+                          className="mt-0.5 inline-flex rounded-full bg-warning-bg px-2 py-0.5 text-[10px] font-medium text-warning-text"
+                          title={t('vneid.testRootHint')}
+                        >
+                          {t('vneid.testRoot')}
+                        </span>
+                      )}
                   </span>
                 </button>
-              );
-            })}
-          </div>
-          {credentials.every((credential) => !credential.usable) ? (
-            <p className="mt-1 text-xs text-error-text">
-              {t('vneid.noUsable')}
-              {!registrationOpen && (
-                <>
-                  {' '}
-                  <button
-                    type="button"
-                    onClick={() => setShowRegister(true)}
-                    disabled={disabled}
-                    className="font-semibold text-primary underline disabled:opacity-60"
-                  >
-                    {t('vneid.register.openButton')}
-                  </button>
-                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setShowCertModal(true)}
+                  className="flex w-full items-center justify-between rounded-xl border border-dashed border-primary/60 bg-surface-soft/60 px-3.5 py-2.5 text-left text-xs text-primary transition hover:border-primary hover:bg-surface-soft disabled:cursor-not-allowed"
+                >
+                  <span className="font-medium">
+                    {t('vneid.selectCertPrompt', { count: credentials.length })}
+                  </span>
+                  <Icon icon="lucide:chevron-right" className="h-4 w-4" />
+                </button>
               )}
-            </p>
-          ) : (
-            value.credentialId === null && (
-              <p className="mt-1 text-xs text-text-muted">{t('vneid.selectCredential')}</p>
-            )
+            </div>
           )}
         </div>
+      )}
+
+      {showCertModal && credentials && (
+        <VneidCertificateModal
+          credentials={credentials}
+          selectedCredentialId={value.credentialId}
+          onSelect={(credentialId) => onChange({ ...value, credentialId })}
+          onClose={() => setShowCertModal(false)}
+          formatDate={formatDate}
+        />
       )}
 
       {showRegister && (
