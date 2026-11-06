@@ -10,6 +10,7 @@ import Footer from '@/components/Footer';
 import { TextField } from '@/components/TextField';
 import { InlineSpinner } from '@/components/signing/Spinners';
 import { formatPrice } from '@/components/vneid/VneidRegisterModal';
+import { getProviderLogo } from '@/lib/vneid/providerLogos';
 import { isPlausibleCitizenPid, isRegistrationOpen } from '@/lib/vneid/client/polling';
 import { useVneidRegistration } from '@/lib/vneid/client/useVneidRegistration';
 import {
@@ -579,6 +580,7 @@ export function VneidCertificateCenterPage() {
                   {providers.map((item, idx) => {
                     const active = selectedProvider === item;
                     const hasFree = item.packs.some((p) => p.free);
+                    const brand = getProviderLogo(item.provider, item.name);
                     return (
                       <button
                         key={`${item.provider}-${idx}`}
@@ -587,18 +589,29 @@ export function VneidCertificateCenterPage() {
                           setSelectedProvider(item);
                           setSelectedPack(item.packs[0] ?? null);
                         }}
-                        className={`flex flex-col justify-between rounded-xl border p-3.5 text-left transition ${
+                        className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition ${
                           active
-                            ? 'border-primary bg-surface-soft ring-2 ring-primary/15'
-                            : 'border-border-subtle bg-white hover:border-primary/50'
+                            ? 'border-primary bg-primary/[0.03] ring-2 ring-primary/20 shadow-sm'
+                            : 'border-border-subtle bg-white hover:border-primary/50 hover:shadow-2xs'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-xs font-extrabold text-primary-strong">
-                            {item.provider.slice(0, 3).toUpperCase()}
-                          </span>
+                          <div className="flex h-10 items-center justify-start">
+                            {brand ? (
+                              <img
+                                src={brand.logo}
+                                alt={brand.alt}
+                                className="h-8 max-h-8 max-w-[130px] object-contain object-left transition group-hover:scale-105"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span className="inline-flex h-8 items-center justify-center rounded-lg bg-primary/10 px-2.5 text-xs font-black tracking-wide text-primary-strong">
+                                {item.provider.slice(0, 4).toUpperCase()}
+                              </span>
+                            )}
+                          </div>
                           <span
-                            className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition ${
                               active ? 'border-primary bg-primary text-white' : 'border-gray-300'
                             }`}
                           >
@@ -606,10 +619,12 @@ export function VneidCertificateCenterPage() {
                           </span>
                         </div>
                         <div className="mt-3">
-                          <p className="text-sm font-bold text-text-main">{item.name}</p>
-                          <p className="mt-0.5 text-[11px] text-text-muted">{item.provider}</p>
+                          <p className="line-clamp-2 min-h-[40px] text-sm font-bold leading-snug text-text-main" title={item.name}>
+                            {item.name}
+                          </p>
+                          <p className="mt-1 font-mono text-[11px] text-text-muted">{item.provider}</p>
                         </div>
-                        <div className="mt-3 flex items-center justify-between border-t border-border-subtle/80 pt-2 text-[11px]">
+                        <div className="mt-3 flex items-center justify-between border-t border-border-subtle/80 pt-2.5 text-[11px]">
                           <span className="font-semibold text-primary-strong">
                             {t('vneid.register.packCount', { count: item.packs.length })}
                           </span>
@@ -768,9 +783,22 @@ export function VneidCertificateCenterPage() {
             {/* Selected Package Summary Banner */}
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-surface-soft px-4 py-3">
               <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-xs font-bold text-white">
-                  CA
-                </span>
+                {(() => {
+                  const bannerBrand = getProviderLogo(selectedProvider.provider, selectedProvider.name);
+                  return bannerBrand ? (
+                    <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-white p-1">
+                      <img
+                        src={bannerBrand.logo}
+                        alt={bannerBrand.alt}
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-white">
+                      CA
+                    </span>
+                  );
+                })()}
                 <div>
                   <p className="text-xs font-bold text-text-main">
                     {selectedProvider.name} · {selectedPack.name}

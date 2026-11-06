@@ -14,6 +14,7 @@ import {
   type VneidRegistration,
   type VneidServicePack,
 } from '@/lib/vneid/client/vneidApi';
+import { getProviderLogo } from '@/lib/vneid/providerLogos';
 import {
   checkRegistrationForm,
   EMPTY_REGISTRATION_FORM,
@@ -326,23 +327,35 @@ export function VneidRegisterModal({
                   className="space-y-1.5"
                 >
                   {/* By position and identity, not code: CSign codes need not be unique. */}
-                  {providers.map((item, index) =>
-                    choice(
+                  {providers.map((item, index) => {
+                    const brand = getProviderLogo(item.provider, item.name);
+                    return choice(
                       provider === item,
                       () => {
                         setProvider(item);
                         setPack(null);
                       },
                       `${item.provider}-${index}`,
-                      <>
-                        <span className="block font-semibold text-text-main">{item.name}</span>
-                        <span className="block text-text-muted">
-                          {item.provider} ·{' '}
-                          {t('vneid.register.packCount', { count: item.packs.length })}
-                        </span>
-                      </>
-                    )
-                  )}
+                      <div className="flex items-center gap-3">
+                        {brand ? (
+                          <div className="flex h-8 w-14 shrink-0 items-center justify-center rounded border border-border-subtle bg-white p-1">
+                            <img
+                              src={brand.logo}
+                              alt={brand.alt}
+                              className="h-full w-full object-contain"
+                            />
+                          </div>
+                        ) : null}
+                        <div>
+                          <span className="block font-semibold text-text-main">{item.name}</span>
+                          <span className="block text-text-muted">
+                            {item.provider} ·{' '}
+                            {t('vneid.register.packCount', { count: item.packs.length })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {footer(() => setStep('intro'), {
