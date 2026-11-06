@@ -234,6 +234,7 @@ async function verifyOneSignature(
         chainLength: chainResult.chain.length,
         certSerial: certificate?.serialNumber,
         aiaError: describeAiaFailures(chainResult.aiaFailures),
+        criticalExtensions: chainResult.criticalExtensions?.join(' | '),
       },
     };
   }
