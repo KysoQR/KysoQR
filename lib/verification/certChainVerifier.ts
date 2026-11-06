@@ -12,6 +12,49 @@ import { checkCrl, checkOcsp, type RevocationCheckResult } from './revocationChe
  * guarantee termination even against a cyclic/malicious AIA response. */
 const MAX_PATH_BUILD_HOPS = 5;
 
+/**
+ * Critical extensions accepted on top of the two node-forge processes itself
+ * (keyUsage, basicConstraints). Vietnam's national roots issued since
+ * 2025-11 (VIETNAM NATIONAL ROOT CA - RS, EMA, MOBILEPKI, ...) and the CAs
+ * under them (e.g. VNPT SmartCA RS 2026) mark both critical, and forge
+ * rejects every such chain with "Certificate has an unsupported critical
+ * extension." Neither narrows what we accept: no particular certificate
+ * policy is required (RFC 5280 6.1, initial-policy-set = anyPolicy), and the
+ * CRL distribution points are what `checkCrl` reads. Any other critical
+ * extension is still rejected by forge.
+ */
+const EXTRA_CRITICAL_EXTENSIONS = new Set(['certificatePolicies', 'cRLDistributionPoints']);
+
+/**
+ * The view of `cert` handed to `forge.pki.verifyCertificateChain`: the
+ * extensions in `EXTRA_CRITICAL_EXTENSIONS` lose their critical flag. A
+ * shallow copy, so the original (possibly shared through the AIA cache) is
+ * never touched; forge checks signatures and trust-store membership against
+ * the DER captured at parse time (`tbsCertificate`, `md`), which the copy
+ * carries over unchanged.
+ */
+function forForgeChainCheck(cert: forge.pki.Certificate): forge.pki.Certificate {
+  const relaxed = (e: { name?: string; critical?: boolean }) =>
+    e.critical === true && e.name !== undefined && EXTRA_CRITICAL_EXTENSIONS.has(e.name);
+  if (!cert.extensions.some(relaxed)) return cert;
+  return {
+    ...cert,
+    extensions: cert.extensions.map((e) => (relaxed(e) ? { ...e, critical: false } : e)),
+  };
+}
+
+/** Server-log summary of each chain certificate's critical extensions, by
+ * position, e.g. "#1 basicConstraints, certificatePolicies, keyUsage" --
+ * positions only, never the signer's name. */
+function describeCriticalExtensions(certs: forge.pki.Certificate[]): string[] {
+  return certs.map((c, index) => {
+    const critical = c.extensions
+      .filter((e: { critical?: boolean }) => e.critical === true)
+      .map((e: { name?: string; id?: string }) => e.name ?? e.id ?? '?');
+    return `#${index} ${critical.length > 0 ? critical.join(', ') : '(none)'}`;
+  });
+}
+
 export type ChainCertInfo = {
   index: number;
   subject: string;
@@ -55,6 +98,11 @@ export type ChainVerificationResult = {
    * `VerificationResult` sent to the client.
    */
   aiaFailures?: AiaFailure[];
+  /**
+   * Each chain certificate's critical extensions, by position ("#0 ...") --
+   * set when the chain did not validate. SERVER LOG only, like `aiaFailures`.
+   */
+  criticalExtensions?: string[];
 };
 
 export type AiaFailure = {
@@ -309,7 +357,7 @@ export async function verifyCertificateChainFromCmsBuffer(
 
       try {
         const caStore = forge.pki.createCaStore(trustedPems);
-        forge.pki.verifyCertificateChain(caStore, certsForChain, {
+        forge.pki.verifyCertificateChain(caStore, certsForChain.map(forForgeChainCheck), {
           validityCheckDate: validityCheckDate ?? new Date(),
         });
         valid = true;
@@ -415,6 +463,7 @@ export async function verifyCertificateChainFromCmsBuffer(
       rootNotInTrustStore,
       certificateExpiredNow,
       ...(aiaFailures.length > 0 ? { aiaFailures } : {}),
+      ...(!valid ? { criticalExtensions: describeCriticalExtensions(certsForChain) } : {}),
     };
   } catch {
     return null;
