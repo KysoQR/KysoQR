@@ -85,6 +85,10 @@ type SignaturePlacementProps = {
   /** Small line under "Chữ ký #n" saying where the signer approves
    * (defaults to the Cas ID wording). */
   fieldSubLabel?: string;
+  /** Page and zoom to open the file on, read once when mounted: the wizard
+   * passes what was on screen when it left this step, so coming back to the
+   * same file (from the QR / VNeID step) lands where the user was. */
+  initialView?: { page: number; zoom: number };
 };
 
 export type SignaturePlacementHandle = {
@@ -116,6 +120,7 @@ function SignaturePlacementInner(
     onCanAddFieldChange,
     topInset = 0,
     fieldSubLabel,
+    initialView,
   }: SignaturePlacementProps,
   ref: React.Ref<SignaturePlacementHandle>
 ) {
@@ -130,6 +135,9 @@ function SignaturePlacementInner(
   const suppressClickUntilRef = useRef(0);
   const endGestureRef = useRef<(() => void) | null>(null);
   const zoomFactorRef = useRef(0.8);
+  // Only the first load of this mount restores the view; another file starts fresh.
+  const initialViewRef = useRef(initialView);
+  const pendingPageRef = useRef<number | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
@@ -247,6 +255,9 @@ function SignaturePlacementInner(
   useEffect(() => {
     let cancelled = false;
     const loadPdf = async () => {
+      const restore = initialViewRef.current;
+      initialViewRef.current = undefined;
+      pendingPageRef.current = restore && restore.page > 1 ? restore.page : null;
       setError(null);
       setPageCount(null);
       setPageAspect({});
@@ -254,7 +265,7 @@ function SignaturePlacementInner(
       setVisiblePage(1);
       setSelectedIndex(null);
       setIsPlacingNew(false);
-      setZoomFactor(0.8);
+      setZoomFactor(restore ? clamp(restore.zoom, ZOOM_MIN, ZOOM_MAX) : 0.8);
       canvasRefs.current.clear();
       overlayRefs.current.clear();
       pageWrapperRefs.current.clear();
@@ -574,7 +585,7 @@ function SignaturePlacementInner(
   useEffect(() => () => endGestureRef.current?.(), []);
 
   const scrollToPage = useCallback(
-    (pageNumber: number) => {
+    (pageNumber: number, behavior: ScrollBehavior = 'smooth') => {
       if (!pageCount) return;
       const safe = clamp(Math.trunc(pageNumber), 1, pageCount);
       const el = pageWrapperRefs.current.get(safe);
@@ -583,10 +594,22 @@ function SignaturePlacementInner(
       // the sticky header/toolbar instead of underneath it, and the stage's
       // own horizontal scroll position is left alone.
       const top = el.getBoundingClientRect().top + window.scrollY - topInset - 8;
-      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      window.scrollTo({ top: Math.max(0, top), behavior });
     },
     [pageCount, topInset]
   );
+
+  // Back to the page the user was on (initialView), once every page's
+  // wrapper has its height -- before that the page's offset is not final.
+  useEffect(() => {
+    if (pendingPageRef.current === null || !pageCount || !Object.keys(pageAspect).length) return;
+    const frame = requestAnimationFrame(() => {
+      const page = pendingPageRef.current;
+      pendingPageRef.current = null;
+      if (page !== null) scrollToPage(page, 'auto');
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pageAspect, pageCount, scrollToPage]);
 
   const zoomOut = useCallback(() => {
     setZoomFactor((z) => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100));

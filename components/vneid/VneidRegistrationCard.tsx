@@ -5,6 +5,7 @@ import { Icon } from '@iconify/react';
 import { InlineSpinner } from '@/components/signing/Spinners';
 import { isRegistrationOpen } from '@/lib/vneid/client/polling';
 import type { VneidRegistration } from '@/lib/vneid/client/vneidApi';
+import { buttonClass, Notice } from './ui';
 
 /**
  * Where a certificate registration stands: waiting on the citizen (share the
@@ -27,20 +28,15 @@ export function VneidRegistrationCard({
   const { t } = useTranslation();
   const open = isRegistrationOpen(registration.status);
   const done = registration.status === 'COMPLETED';
-  const tone = open
-    ? 'border-border-subtle bg-surface-soft'
-    : done
-      ? 'border-green-500 bg-green-50'
-      : 'border-error-border bg-error-bg';
 
   return (
-    <div className={`rounded-lg border px-3 py-2.5 text-xs ${tone}`} aria-live="polite">
-      <div className="flex items-start gap-2">
+    <Notice tone={open ? 'info' : done ? 'success' : 'error'}>
+      <div className="flex items-start gap-2" aria-live="polite">
         <span className="mt-0.5 shrink-0">
           {open ? (
             <InlineSpinner />
           ) : done ? (
-            <Icon icon="lucide:circle-check-big" className="h-4 w-4 text-green-700" />
+            <Icon icon="lucide:circle-check-big" className="h-4 w-4 text-primary" />
           ) : (
             <Icon icon="lucide:alert-triangle" className="h-4 w-4 text-error-text" />
           )}
@@ -50,7 +46,7 @@ export function VneidRegistrationCard({
           <p className="text-text-muted">
             {registration.providerName} · {registration.servicePackName}
           </p>
-          <p className={done ? 'text-green-700' : open ? 'text-text-main' : 'text-error-text'}>
+          <p className={done ? 'text-primary-strong' : open ? 'text-text-main' : 'text-error-text'}>
             {t(`vneid.register.status.${registration.status}`)}
             {registration.reason ? ` ${t(`vneid.register.reason.${registration.reason}`)}` : ''}
           </p>
@@ -71,13 +67,13 @@ export function VneidRegistrationCard({
               type="button"
               onClick={onRegisterAgain}
               disabled={disabled}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-primary bg-white px-3 py-1 text-xs font-semibold text-primary shadow-sm transition hover:bg-surface-soft-strong disabled:cursor-not-allowed disabled:opacity-60"
+              className={`mt-1 ${buttonClass('secondary', 'sm')}`}
             >
               {t('vneid.register.again')}
             </button>
           )}
         </div>
       </div>
-    </div>
+    </Notice>
   );
 }

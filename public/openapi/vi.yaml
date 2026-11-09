@@ -658,11 +658,12 @@ paths:
           description: |
             `VNEID_FORBIDDEN_ORIGIN`: thiếu `Origin` hoặc không phải trang KysoQR.
             `VNEID_CHALLENGE_FAILED`: thiếu hoặc sai token Turnstile.
+            `VNEID_ACCESS_DENIED`: IP không nằm trong danh sách tin tưởng `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CHALLENGE_FAILED]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CHALLENGE_FAILED, VNEID_ACCESS_DENIED]
         '409':
           description: CCCD này đang có một yêu cầu chờ xác nhận (ở KysoQR hoặc ở CSign, mã `-01`).
           content:
@@ -769,12 +770,14 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_INVALID_INPUT]
         '403':
-          description: Thiếu `Origin` hoặc không phải trang KysoQR.
+          description: |
+            Thiếu `Origin` hoặc không phải trang KysoQR.
+            `VNEID_ACCESS_DENIED`: IP không nằm trong danh sách tin tưởng `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_ACCESS_DENIED]
         '411':
           $ref: '#/components/responses/VneidLengthRequired'
         '413':
@@ -800,12 +803,14 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_UPSTREAM]
         '503':
-          description: Server chưa cấu hình ký VNeID.
+          description: |
+            `VNEID_NOT_CONFIGURED`: server chưa cấu hình ký VNeID.
+            `VNEID_DAILY_CAP`: hết hạn mức tra cứu chứng thư trong ngày của toàn hệ thống (có `Retry-After`).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_NOT_CONFIGURED]
+          x-error-codes: [VNEID_NOT_CONFIGURED, VNEID_DAILY_CAP]
 
   /api/vneid/providers:
     get:
@@ -834,6 +839,13 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/VneidProvider'
+        '403':
+          description: IP không nằm trong danh sách tin tưởng `VNEID_TRUSTED_IPS`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_ACCESS_DENIED]
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -865,7 +877,7 @@ paths:
 
         - Form (`userInfo`) chỉ được gửi tới CSign: không lưu, không ghi log, không trả lại. Server chỉ giữ nhà cung cấp, gói, trạng thái và mã lỗi của CSign, theo HMAC của CCCD, tới khi có kết quả (rồi thêm 24 giờ).
         - Ngày gửi dạng `YYYY-MM-DD`; server đổi sang `dd/MM/yyyy` cho CSign.
-        - Mỗi CCCD một yêu cầu đang mở, tối đa 3 yêu cầu / 24 giờ.
+        - Mỗi CCCD một yêu cầu đang mở.
         - Bắt buộc header `Origin`, `Content-Length` (tối đa 8KB) và `x-turnstile-token` khi server bật Turnstile.
         - Rate limit: 5 request / 10 phút / IP.
 
@@ -897,12 +909,14 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_INVALID_INPUT, VNEID_REGISTRATION_INVALID]
         '403':
-          description: Thiếu `Origin`, không phải trang KysoQR, hoặc Turnstile không qua.
+          description: |
+            Thiếu `Origin`, không phải trang KysoQR, hoặc Turnstile không qua.
+            `VNEID_ACCESS_DENIED`: IP không nằm trong danh sách tin tưởng `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CHALLENGE_FAILED]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CHALLENGE_FAILED, VNEID_ACCESS_DENIED]
         '409':
           description: |
             `VNEID_REGISTRATION_PENDING`: CCCD đang có yêu cầu đăng ký (hoặc yêu cầu khác) chờ trên VNeID.
@@ -926,10 +940,7 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_PROVIDER_UNAVAILABLE]
         '429':
-          description: |
-            `RATE_LIMITED`: vượt rate limit theo IP.
-            `VNEID_REGISTRATION_LIMITED`: CCCD đã gửi 3 yêu cầu đăng ký trong 24 giờ.
-            Cả hai có header `Retry-After`.
+          description: Vượt rate limit theo IP. Có header `Retry-After`.
           headers:
             Retry-After:
               $ref: '#/components/headers/RetryAfter'
@@ -937,7 +948,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [RATE_LIMITED, VNEID_REGISTRATION_LIMITED]
+          x-error-codes: [RATE_LIMITED]
         '500':
           $ref: '#/components/responses/VneidInternal'
         '502':
@@ -1003,12 +1014,14 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_INVALID_INPUT]
         '403':
-          description: Thiếu `Origin` hoặc không phải trang KysoQR.
+          description: |
+            Thiếu `Origin` hoặc không phải trang KysoQR.
+            `VNEID_ACCESS_DENIED`: IP không nằm trong danh sách tin tưởng `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_ACCESS_DENIED]
         '411':
           $ref: '#/components/responses/VneidLengthRequired'
         '413':
@@ -1033,8 +1046,9 @@ paths:
       operationId: getVneidSigningStatus
       summary: Tra cứu trạng thái yêu cầu ký VNeID
       description: |
-        Đọc trạng thái từ cơ sở dữ liệu của server. Server chỉ hỏi CSign (`query-status`, tối đa 1 lần / 15 giây / yêu cầu)
-        trong lúc người ký còn xác nhận được (5 phút + 1 phút); sau đó chỉ webhook mới cập nhật kết quả.
+        Đọc trạng thái từ cơ sở dữ liệu của server. Khi webhook chưa mang kết quả về, server hỏi CSign (`query-status`):
+        tối đa 1 lần / 5 giây / yêu cầu trong lúc người ký còn xác nhận được (5 phút + 1 phút), sau đó 1 lần / 60 giây tới `expiresAt`.
+        Với `VNEID_QUERY_STATUS=off` (chỉ dùng để kiểm webhook) server không hỏi CSign: kết quả chỉ đến qua webhook.
 
         Poll khuyến nghị: 4 giây/lần trong 5 phút đầu, sau đó 10 giây/lần; dừng ở `SIGNED`, `FINALIZED`, `REJECTED`, `EXPIRED`, `FAILED`
         hoặc khi quá `expiresAt`; gặp `429` thì chờ theo `Retry-After`.
@@ -1047,7 +1061,7 @@ paths:
         | `FINALIZED` | Đã tải file đã ký (vẫn tải lại được) |
         | `REJECTED` | Người ký từ chối (`reason: REFUSED`) |
         | `EXPIRED` | Quá thời gian (`reason: TIMEOUT`) |
-        | `FAILED` | `reason`: `SIGNATURE_UNUSABLE` (chữ ký CSign trả về không dùng được), `CODE_ATTEMPTS`, `PROVIDER` |
+        | `FAILED` | `reason`: `SIGNATURE_UNUSABLE` (chữ ký CSign trả về không dùng được), `CODE_ATTEMPTS`, `IDENTITY_SERVICE` (CSign không kết nối được hệ thống xác thực VNeID / TTXT: `errorcode4001`–`4003`), `PROVIDER` |
 
         Sai `transactionId` hay sai `clientSecret` đều trả cùng `404`. Rate limit: 120 request / phút / IP và 30 / phút / giao dịch.
 
@@ -1080,12 +1094,14 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_INVALID_INPUT]
         '403':
-          description: Thiếu `Origin` hoặc không phải trang KysoQR.
+          description: |
+            Thiếu `Origin` hoặc không phải trang KysoQR.
+            `VNEID_ACCESS_DENIED`: IP không nằm trong danh sách tin tưởng `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_ACCESS_DENIED]
         '404':
           description: Không có giao dịch này, hoặc sai `clientSecret`.
           content:
@@ -1172,11 +1188,12 @@ paths:
           description: |
             `VNEID_FORBIDDEN_ORIGIN`: thiếu `Origin` hoặc không phải trang KysoQR.
             `VNEID_CODE_INVALID`: sai mã xác nhận; sai 5 lần thì giao dịch bị huỷ.
+            `VNEID_ACCESS_DENIED`: IP không nằm trong danh sách tin tưởng `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CODE_INVALID]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CODE_INVALID, VNEID_ACCESS_DENIED]
         '404':
           description: Không có giao dịch này, hoặc sai `clientSecret`.
           content:
@@ -1230,6 +1247,31 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_NOT_CONFIGURED, VNEID_BUSY]
 
+  /api/vneid/access:
+    get:
+      tags: [Ký bằng VNeID]
+      operationId: getVneidAccess
+      summary: Client này có được dùng VNeID không
+      description: |
+        Trả `allowed: true` khi IP của client nằm trong `VNEID_TRUSTED_IPS` (hoặc danh sách để trống). Trang web dùng nó để hiện hay ẩn mọi phần VNeID; các route VNeID khác tự trả `403 VNEID_ACCESS_DENIED` cho IP ngoài danh sách.
+
+        - Danh sách có giá trị thì bắt buộc `TRUSTED_IP_HEADER`; thiếu, hoặc có mục sai định dạng, thì VNeID đóng với mọi IP.
+        - Rate limit: 60 request / phút / IP.
+
+        Nguồn trong code: `app/api/vneid/access/route.ts`, `lib/vneid/access.ts`.
+      responses:
+        '200':
+          description: Kết quả.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [allowed]
+                properties:
+                  allowed:
+                    type: boolean
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /api/vneid/webhook:
     post:
       tags: [Ký bằng VNeID]
@@ -1242,7 +1284,7 @@ paths:
         - Xác thực bằng HMAC-SHA256 trên **raw body**, khoá là chuỗi secret (`CSIGN_WEBHOOK_SECRET`), header
           `abp-webhook-signature: HMAC SHA256=<hex>`. Sai chữ ký → `401`.
         - `organizationId` phải là của KysoQR; `timestamp` lệch quá 30 phút → `400`. Mỗi `id` sự kiện chỉ xử lý một lần.
-        - Chữ ký trong `signing.completed` chỉ được lưu khi kiểm tra toán học đúng; `signing.failed` được xác nhận lại bằng `query-status`.
+        - Chữ ký trong `signing.completed` chỉ được lưu khi kiểm tra toán học đúng; `signing.failed` được xác nhận lại bằng `query-status` (trừ khi `VNEID_QUERY_STATUS=off`: khi đó áp nguyên nội dung sự kiện).
         - Trả lời theo tài liệu CSign: `200 { received: true }` (kể cả sự kiện bị bỏ qua có chủ đích); lỗi `{ error, errorDescription }`.
           Chỉ `500` khiến CSign gửi lại.
         - Body tối đa 64KB. Rate limit: 300 request / phút / IP.
@@ -1893,7 +1935,7 @@ components:
           enum: [PENDING, WAITING_USER, SIGNED, FINALIZED, REJECTED, EXPIRED, FAILED]
         reason:
           type: string
-          enum: [REFUSED, TIMEOUT, SIGNATURE_UNUSABLE, CODE_ATTEMPTS, PROVIDER]
+          enum: [REFUSED, TIMEOUT, SIGNATURE_UNUSABLE, CODE_ATTEMPTS, IDENTITY_SERVICE, PROVIDER]
           description: Chỉ có khi `status` là `REJECTED`, `EXPIRED` hoặc `FAILED`.
         confirmDeadline:
           type: string

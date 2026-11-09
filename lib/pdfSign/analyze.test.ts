@@ -1,8 +1,13 @@
 import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { assertSignable, loadPdfForSigning } from './analyze.ts';
+import { analyzePdf, assertSignable, loadPdfForSigning } from './analyze.ts';
 import { MAX_OBJSTM_INFLATED_BYTES, MAX_PDF_BYTES } from './limits.ts';
-import { assertNoObjectStreamBomb, findLastStartXref, readXrefSection } from './rawPdf.ts';
+import {
+  assertFewByteRanges,
+  assertNoObjectStreamBomb,
+  findLastStartXref,
+  readXrefSection,
+} from './rawPdf.ts';
 import {
   buildClassicPdf,
   createSamplePdf,
@@ -203,6 +208,43 @@ describe('loadPdfForSigning', () => {
     it('lets an ordinary object stream through', async () => {
       const pdf = await createSamplePdf({ objectStreams: true });
       expect(() => assertNoObjectStreamBomb(pdf)).not.toThrow();
+    });
+
+    it('also checks xref streams, a /Type split by a comment and a /Type given by reference', () => {
+      for (const typeName of ['/XRef', '%x\n/ObjStm', '5 0 R']) {
+        expect(() =>
+          assertNoObjectStreamBomb(objectStream(typeName, '/Filter /FlateDecode', bomb))
+        ).toThrowError(/inflates/);
+      }
+    });
+
+    it('refuses a /Filter given by reference, which it cannot bound', () => {
+      expect(() =>
+        assertNoObjectStreamBomb(objectStream('/ObjStm', '/Filter 9 0 R', Buffer.from('x')))
+      ).toThrowError(/filter/i);
+    });
+
+    it('stays fast on the long run of zeros a /Contents placeholder is', () => {
+      const zeros = Buffer.from(`1 0 obj\n<< /Contents <${'0'.repeat(200_000)}> >>\nendobj\n`);
+      const start = performance.now();
+      assertNoObjectStreamBomb(zeros);
+      expect(performance.now() - start).toBeLessThan(1000);
+    });
+  });
+
+  describe('/ByteRange count', () => {
+    it('accepts a handful and refuses a file stuffed with them, before anything is sent', async () => {
+      expect(() => assertFewByteRanges(Buffer.from('/ByteRange '.repeat(100)))).not.toThrow();
+      const stuffed = minimalDocument({
+        objects: [
+          {
+            number: 9,
+            body: `<< /Length 1 >>\nstream\n${'/ByteRange[0 0 0 0]'.repeat(101)}\nendstream`,
+          },
+        ],
+      });
+      expect(() => assertFewByteRanges(stuffed)).toThrowError(/ByteRange/);
+      await rejects(analyzePdf(stuffed), 'PDF_UNSUPPORTED');
     });
   });
 });

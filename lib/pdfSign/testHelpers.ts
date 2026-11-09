@@ -64,6 +64,8 @@ function issue(options: {
   notBefore?: Date;
   notAfter?: Date;
   keyBits?: number;
+  /** Extended key usage id-kp-timeStamping, as a TSA certificate has. */
+  timeStamping?: boolean;
 }): Issued {
   const keys = newKeyPair(options.keyBits);
   const cert = forge.pki.createCertificate();
@@ -80,6 +82,7 @@ function issue(options: {
     options.isCa
       ? { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true }
       : { name: 'keyUsage', digitalSignature: true, nonRepudiation: true, critical: true },
+    ...(options.timeStamping ? [{ name: 'extKeyUsage', timeStamping: true, critical: true }] : []),
   ]);
   const signer = options.issuer
     ? forge.pki.privateKeyFromPem(options.issuer.keyPem)
@@ -95,7 +98,7 @@ export function createSoftIdentity(
     commonName?: string;
     uid?: string;
     levels?: 1 | 2 | 3;
-    leaf?: { notBefore?: Date; notAfter?: Date; keyBits?: number };
+    leaf?: { notBefore?: Date; notAfter?: Date; keyBits?: number; timeStamping?: boolean };
   } = {}
 ): SoftIdentity {
   const commonName = options.commonName ?? 'Nguyen Van A';
@@ -341,7 +344,12 @@ export interface TestTsa {
 
 /** A TSA signing real RFC 3161 tokens with a software key. */
 export function createTestTsa(): TestTsa {
-  const identity = createSoftIdentity({ commonName: 'KysoQR Test TSA' });
+  // Self-signed, so a test can trust exactly this TSA (setTsaTrustedRootsForTests).
+  const identity = createSoftIdentity({
+    commonName: 'KysoQR Test TSA',
+    levels: 1,
+    leaf: { timeStamping: true },
+  });
   let serial = 1;
 
   async function buildToken(

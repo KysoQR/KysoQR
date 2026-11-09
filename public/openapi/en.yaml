@@ -658,11 +658,12 @@ paths:
           description: |
             `VNEID_FORBIDDEN_ORIGIN`: no `Origin`, or not the KysoQR site.
             `VNEID_CHALLENGE_FAILED`: Turnstile token missing or refused.
+            `VNEID_ACCESS_DENIED`: the client IP is not in the trusted list `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CHALLENGE_FAILED]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CHALLENGE_FAILED, VNEID_ACCESS_DENIED]
         '409':
           description: This CCCD already has a request waiting (at KysoQR, or at CSign with code `-01`).
           content:
@@ -769,12 +770,14 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_INVALID_INPUT]
         '403':
-          description: No `Origin`, or not the KysoQR site.
+          description: |
+            No `Origin`, or not the KysoQR site.
+            `VNEID_ACCESS_DENIED`: the client IP is not in the trusted list `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_ACCESS_DENIED]
         '411':
           $ref: '#/components/responses/VneidLengthRequired'
         '413':
@@ -800,12 +803,14 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_UPSTREAM]
         '503':
-          description: The server is not set up for VNeID signing.
+          description: |
+            `VNEID_NOT_CONFIGURED`: the server is not set up for VNeID signing.
+            `VNEID_DAILY_CAP`: the service-wide daily quota of certificate lookups is used up (with `Retry-After`).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_NOT_CONFIGURED]
+          x-error-codes: [VNEID_NOT_CONFIGURED, VNEID_DAILY_CAP]
 
   /api/vneid/providers:
     get:
@@ -834,6 +839,13 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/VneidProvider'
+        '403':
+          description: The client IP is not in the trusted list `VNEID_TRUSTED_IPS`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          x-error-codes: [VNEID_ACCESS_DENIED]
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -865,7 +877,7 @@ paths:
 
         - The form (`userInfo`) goes to CSign only: it is not stored, not logged, not sent back. The server keeps the provider, pack, status and CSign's codes under an HMAC of the CCCD until the outcome is known (then 24 more hours).
         - Dates are sent as `YYYY-MM-DD`; the server turns them into `dd/MM/yyyy` for CSign.
-        - One open request per CCCD, at most 3 requests / 24 hours.
+        - One open request per CCCD.
         - Requires the `Origin` header, `Content-Length` (at most 8 KB) and `x-turnstile-token` when the server has Turnstile on.
         - Rate limit: 5 requests / 10 minutes / IP.
 
@@ -897,12 +909,14 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_INVALID_INPUT, VNEID_REGISTRATION_INVALID]
         '403':
-          description: Missing `Origin`, not the KysoQR site, or Turnstile failed.
+          description: |
+            Missing `Origin`, not the KysoQR site, or Turnstile failed.
+            `VNEID_ACCESS_DENIED`: the client IP is not in the trusted list `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CHALLENGE_FAILED]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CHALLENGE_FAILED, VNEID_ACCESS_DENIED]
         '409':
           description: |
             `VNEID_REGISTRATION_PENDING`: the CCCD has a registration (or another request) waiting on VNeID.
@@ -926,10 +940,7 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_PROVIDER_UNAVAILABLE]
         '429':
-          description: |
-            `RATE_LIMITED`: the per-IP rate limit is exceeded.
-            `VNEID_REGISTRATION_LIMITED`: the CCCD sent 3 registrations in 24 hours.
-            Both come with a `Retry-After` header.
+          description: The per-IP rate limit is exceeded. Comes with a `Retry-After` header.
           headers:
             Retry-After:
               $ref: '#/components/headers/RetryAfter'
@@ -937,7 +948,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [RATE_LIMITED, VNEID_REGISTRATION_LIMITED]
+          x-error-codes: [RATE_LIMITED]
         '500':
           $ref: '#/components/responses/VneidInternal'
         '502':
@@ -1003,12 +1014,14 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_INVALID_INPUT]
         '403':
-          description: Missing `Origin`, or not the KysoQR site.
+          description: |
+            Missing `Origin`, or not the KysoQR site.
+            `VNEID_ACCESS_DENIED`: the client IP is not in the trusted list `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_ACCESS_DENIED]
         '411':
           $ref: '#/components/responses/VneidLengthRequired'
         '413':
@@ -1033,8 +1046,9 @@ paths:
       operationId: getVneidSigningStatus
       summary: Get the status of a VNeID signing request
       description: |
-        Read from the server's database. The server asks CSign (`query-status`, at most once per 15 seconds per request)
-        only while the signer can still confirm (5 minutes + 1 minute); after that only the webhook updates the result.
+        Read from the server's database. While the webhook has not brought the result, the server asks CSign (`query-status`):
+        at most once per 5 seconds per request while the signer can still confirm (5 minutes + 1 minute), then once per 60 seconds until `expiresAt`.
+        With `VNEID_QUERY_STATUS=off` (only for checking the webhook) the server never asks CSign: results arrive by webhook only.
 
         Suggested polling: every 4 seconds for the first 5 minutes, then every 10 seconds; stop at `SIGNED`, `FINALIZED`,
         `REJECTED`, `EXPIRED`, `FAILED` or past `expiresAt`; on `429` wait for `Retry-After`.
@@ -1047,7 +1061,7 @@ paths:
         | `FINALIZED` | The signed file was downloaded (can be downloaded again) |
         | `REJECTED` | The signer refused (`reason: REFUSED`) |
         | `EXPIRED` | Timed out (`reason: TIMEOUT`) |
-        | `FAILED` | `reason`: `SIGNATURE_UNUSABLE` (the signature CSign returned is unusable), `CODE_ATTEMPTS`, `PROVIDER` |
+        | `FAILED` | `reason`: `SIGNATURE_UNUSABLE` (the signature CSign returned is unusable), `CODE_ATTEMPTS`, `IDENTITY_SERVICE` (CSign could not reach VNeID's identity service / TTXT: `errorcode4001`-`4003`), `PROVIDER` |
 
         A wrong `transactionId` and a wrong `clientSecret` both give the same `404`. Rate limit: 120 requests / minute / IP and 30 / minute / transaction.
 
@@ -1080,12 +1094,14 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_INVALID_INPUT]
         '403':
-          description: No `Origin`, or not the KysoQR site.
+          description: |
+            No `Origin`, or not the KysoQR site.
+            `VNEID_ACCESS_DENIED`: the client IP is not in the trusted list `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_ACCESS_DENIED]
         '404':
           description: No such transaction, or a wrong `clientSecret`.
           content:
@@ -1175,11 +1191,12 @@ paths:
           description: |
             `VNEID_FORBIDDEN_ORIGIN`: no `Origin`, or not the KysoQR site.
             `VNEID_CODE_INVALID`: wrong confirmation code; 5 wrong codes cancel the transaction.
+            `VNEID_ACCESS_DENIED`: the client IP is not in the trusted list `VNEID_TRUSTED_IPS`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CODE_INVALID]
+          x-error-codes: [VNEID_FORBIDDEN_ORIGIN, VNEID_CODE_INVALID, VNEID_ACCESS_DENIED]
         '404':
           description: No such transaction, or a wrong `clientSecret`.
           content:
@@ -1233,6 +1250,31 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           x-error-codes: [VNEID_NOT_CONFIGURED, VNEID_BUSY]
 
+  /api/vneid/access:
+    get:
+      tags: [VNeID signing]
+      operationId: getVneidAccess
+      summary: Whether this client may use VNeID
+      description: |
+        Answers `allowed: true` when the client IP is in `VNEID_TRUSTED_IPS` (or the list is empty). The site uses it to show or hide every VNeID control; the other VNeID routes answer `403 VNEID_ACCESS_DENIED` to an IP outside the list by themselves.
+
+        - A non-empty list requires `TRUSTED_IP_HEADER`; without it, or with an entry that cannot be read, VNeID is closed to every IP.
+        - Rate limit: 60 requests / minute / IP.
+
+        Source: `app/api/vneid/access/route.ts`, `lib/vneid/access.ts`.
+      responses:
+        '200':
+          description: The answer.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [allowed]
+                properties:
+                  allowed:
+                    type: boolean
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /api/vneid/webhook:
     post:
       tags: [VNeID signing]
@@ -1245,7 +1287,7 @@ paths:
         - Authenticated by HMAC-SHA256 over the **raw body**, keyed with the secret string (`CSIGN_WEBHOOK_SECRET`), in
           `abp-webhook-signature: HMAC SHA256=<hex>`. A wrong signature → `401`.
         - `organizationId` must be KysoQR's; a `timestamp` more than 30 minutes off → `400`. Each event `id` is processed once.
-        - A signature in `signing.completed` is stored only once it verifies mathematically; `signing.failed` is confirmed with `query-status`.
+        - A signature in `signing.completed` is stored only once it verifies mathematically; `signing.failed` is confirmed with `query-status` (unless `VNEID_QUERY_STATUS=off`: the event is then applied as delivered).
         - Answers follow the CSign docs: `200 { received: true }` (also for events deliberately ignored); errors `{ error, errorDescription }`.
           Only `500` makes CSign retry.
         - Body up to 64 KB. Rate limit: 300 requests / minute / IP.
@@ -1896,7 +1938,7 @@ components:
           enum: [PENDING, WAITING_USER, SIGNED, FINALIZED, REJECTED, EXPIRED, FAILED]
         reason:
           type: string
-          enum: [REFUSED, TIMEOUT, SIGNATURE_UNUSABLE, CODE_ATTEMPTS, PROVIDER]
+          enum: [REFUSED, TIMEOUT, SIGNATURE_UNUSABLE, CODE_ATTEMPTS, IDENTITY_SERVICE, PROVIDER]
           description: Only when `status` is `REJECTED`, `EXPIRED` or `FAILED`.
         confirmDeadline:
           type: string

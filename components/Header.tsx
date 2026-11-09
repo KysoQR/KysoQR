@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
+import { useVneidAccess } from '@/lib/vneid/client/useVneidAccess';
 import LanguageSwitcher from './LanguageSwitcher';
 import { GithubStarsButton } from './GithubStarsButton';
 import { useWhyMenu } from './WhyMenu';
@@ -72,7 +73,9 @@ function NavLines({
   align: 'center' | 'start';
 }) {
   return (
-    <span className={`flex flex-col leading-tight ${align === 'center' ? 'items-center' : 'items-start'}`}>
+    <span
+      className={`flex flex-col leading-tight ${align === 'center' ? 'items-center' : 'items-start'}`}
+    >
       <span className="text-[13px] font-medium text-text-secondary">{kicker}</span>
       <span className="mt-0.5 text-sm font-bold tracking-[-0.02em] text-text-main">{label}</span>
     </span>
@@ -118,7 +121,11 @@ export default function Header({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const pathname = usePathname();
   const showWhy = useWhyMenu();
-  const navItems = NAV_ITEMS.filter((item) => item.key !== 'why' || showWhy);
+  // The VNeID page only for trusted networks (VNEID_TRUSTED_IPS).
+  const vneidAllowed = useVneidAccess();
+  const navItems = NAV_ITEMS.filter(
+    (item) => (item.key !== 'why' || showWhy) && (item.key !== 'vneid' || vneidAllowed)
+  );
 
   return (
     <>
@@ -126,7 +133,11 @@ export default function Header({
         <div
           className={`mx-auto flex h-[72px] items-center px-4 sm:px-6 lg:grid lg:grid-cols-[1fr_auto_1fr] ${maxWidthClassName}`}
         >
-          <Link href="/" onClick={onLogoClick} className="flex w-fit shrink-0 items-center justify-self-start gap-0">
+          <Link
+            href="/"
+            onClick={onLogoClick}
+            className="flex w-fit shrink-0 items-center justify-self-start gap-0"
+          >
             {/* eslint-disable-next-line @next/next/no-img-element -- small static logo image, no optimization needed */}
             <img
               src="/kysoqr-logo.png"
@@ -175,11 +186,7 @@ export default function Header({
                 href="/why.html"
                 className="rounded-lg px-1.5 py-1 outline-none transition-colors hover:bg-surface-soft focus-visible:ring-2 focus-visible:ring-primary/40 lg:hidden"
               >
-                <NavLines
-                  kicker={t('nav.whyKicker')}
-                  label={t('nav.whyLabel')}
-                  align="center"
-                />
+                <NavLines kicker={t('nav.whyKicker')} label={t('nav.whyLabel')} align="center" />
               </a>
             )}
             <div className="flex items-center gap-3.5">
@@ -264,7 +271,6 @@ export default function Header({
           </div>
         </>
       )}
-
     </>
   );
 }

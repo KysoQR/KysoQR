@@ -16,14 +16,13 @@ function answer(status: number, body: Record<string, unknown>): Response {
  * Authenticated by the HMAC-SHA256 signature in `abp-webhook-signature`
  * (lib/vneid/webhook.ts does all checks). Register this URL at CSign with
  * the signing.created / signing.completed / signing.failed events only.
+ *
+ * Only refused signatures are rate limited, and only after the check: a
+ * genuine CSign call is never answered 429 (CSign would not deliver it
+ * again), whatever junk others send with whatever IP header. Reading at most
+ * 64 KB and one HMAC cost too little to need a limit in front.
  */
 export async function POST(request: Request): Promise<Response> {
-  const rateLimit = checkRateLimit(`vneid-webhook:${clientIpFromRequest(request)}`, {
-    limit: 300,
-    windowMs: 60_000,
-  });
-  if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);
-
   let deps: VneidDeps;
   try {
     deps = getVneidDeps();
@@ -36,6 +35,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const declared = Number(request.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > MAX_WEBHOOK_BYTES) {
+    console.warn('[vneid:webhook] refused 400 payload_too_large');
     return answer(400, {
       error: 'payload_too_large',
       errorDescription: 'Payload exceeds the accepted size',
@@ -63,5 +63,12 @@ export async function POST(request: Request): Promise<Response> {
     Buffer.concat(chunks),
     request.headers.get('abp-webhook-signature')
   );
+  if (result.status === 401) {
+    const refused = checkRateLimit(`vneid-webhook-refused:${clientIpFromRequest(request)}`, {
+      limit: 60,
+      windowMs: 60_000,
+    });
+    if (!refused.allowed) return rateLimitedResponse(refused.retryAfterSeconds);
+  }
   return answer(result.status, result.body);
 }

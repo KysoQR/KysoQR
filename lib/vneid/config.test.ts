@@ -31,7 +31,7 @@ describe('parseVneidConfig', () => {
       dailyCap: 5000,
       auditDays: 90,
       requireCode: false,
-      tsaUrls: ['http://timestamp.digicert.com', 'http://timestamp.sectigo.com'],
+      tsaUrls: ['http://timestamp.digicert.com', 'https://timestamp.sectigo.com'],
     });
   });
 
@@ -39,14 +39,14 @@ describe('parseVneidConfig', () => {
     const tsaUrls = (env: Record<string, string>) => parseVneidConfig({ ...base, ...env }).tsaUrls;
     expect(tsaUrls({ TSA_URL: '', TSA_FALLBACK_URL: '' })).toEqual([
       'http://timestamp.digicert.com',
-      'http://timestamp.sectigo.com',
+      'https://timestamp.sectigo.com',
     ]);
     expect(
       tsaUrls({ TSA_URL: 'https://tsa.example.test/tsr', TSA_FALLBACK_URL: 'http://tsa2.test' })
     ).toEqual(['https://tsa.example.test/tsr', 'http://tsa2.test']);
     expect(tsaUrls({ TSA_FALLBACK_URL: 'off' })).toEqual(['http://timestamp.digicert.com']);
-    expect(tsaUrls({ TSA_URL: 'http://timestamp.sectigo.com' })).toEqual([
-      'http://timestamp.sectigo.com',
+    expect(tsaUrls({ TSA_URL: 'https://timestamp.sectigo.com' })).toEqual([
+      'https://timestamp.sectigo.com',
     ]);
     expect(tsaUrls({ TSA_URL: 'off', TSA_FALLBACK_URL: 'http://tsa2.test' })).toEqual([]);
     for (const bad of ['ftp://tsa.example.test', 'http://user:pw@tsa.example.test', 'tsa']) {
@@ -80,7 +80,6 @@ describe('parseVneidConfig', () => {
     expect(problemsOf({ ...base, CMC_CA_USERNAME: '' })).toEqual([
       expect.stringMatching(/^CMC_CA_USERNAME/),
     ]);
-    expect(parseVneidConfig({ ...base, VNEID_DAILY_CAP: '' }).dailyCap).toBe(5000);
   });
 
   it('requires an https base URL without credentials, query or fragment', () => {
@@ -112,8 +111,24 @@ describe('parseVneidConfig', () => {
 
   it('validates the numbers and the code switch', () => {
     expect(problemsOf({ ...base, VNEID_DAILY_CAP: '0' })).toHaveLength(1);
+    expect(parseVneidConfig({ ...base, VNEID_DAILY_CAP: '' }).dailyCap).toBe(5000);
     expect(problemsOf({ ...base, VNEID_AUDIT_DAYS: '1.5' })).toHaveLength(1);
     expect(problemsOf({ ...base, VNEID_REQUIRE_CODE: 'yes' })).toHaveLength(1);
     expect(parseVneidConfig({ ...base, VNEID_REQUIRE_CODE: 'true' }).requireCode).toBe(true);
+  });
+
+  it('asks query-status unless VNEID_QUERY_STATUS=off, which needs the webhook', () => {
+    const webhook = { CSIGN_ORGANIZATION_ID: 'org-1', CSIGN_WEBHOOK_SECRET: 'whsec_now' };
+    expect(parseVneidConfig(base).queryStatus).toBe(true);
+    expect(parseVneidConfig({ ...base, VNEID_QUERY_STATUS: '' }).queryStatus).toBe(true);
+    expect(parseVneidConfig({ ...base, ...webhook, VNEID_QUERY_STATUS: 'off' }).queryStatus).toBe(
+      false
+    );
+    expect(problemsOf({ ...base, VNEID_QUERY_STATUS: 'off' })).toEqual([
+      expect.stringMatching(/^VNEID_QUERY_STATUS is off but/),
+    ]);
+    expect(problemsOf({ ...base, VNEID_QUERY_STATUS: 'maybe' })).toEqual([
+      expect.stringMatching(/^VNEID_QUERY_STATUS must be on or off/),
+    ]);
   });
 });

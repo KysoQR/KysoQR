@@ -1,4 +1,5 @@
 import { sanitizeLogText } from '../cas/casPayload';
+import { checkRateLimit, rateLimitedResponse } from '../rateLimit';
 import { isVneidError, VneidError, type VneidErrorCode } from './errors';
 
 /**
@@ -18,6 +19,10 @@ const MESSAGES: Record<VneidErrorCode, { vi: string; en: string }> = {
   VNEID_NOT_CONFIGURED: {
     vi: 'Máy chủ chưa được cấu hình để ký bằng VNeID. Vui lòng liên hệ quản trị viên.',
     en: 'This server is not set up for VNeID signing. Please contact the administrator.',
+  },
+  VNEID_ACCESS_DENIED: {
+    vi: 'Ký bằng VNeID chưa mở cho mạng của bạn.',
+    en: 'VNeID signing is not available from your network.',
   },
   VNEID_FORBIDDEN_ORIGIN: {
     vi: 'Yêu cầu không đến từ trang KysoQR.',
@@ -56,8 +61,8 @@ const MESSAGES: Record<VneidErrorCode, { vi: string; en: string }> = {
     en: 'Too many signing requests for this CCCD were refused or ignored. Please try again later.',
   },
   VNEID_DAILY_CAP: {
-    vi: 'Hệ thống đã đạt giới hạn lượt ký VNeID trong ngày. Vui lòng thử lại sau.',
-    en: 'The daily limit of VNeID signing requests has been reached. Please try again later.',
+    vi: 'Hệ thống đã đạt giới hạn lượt VNeID trong ngày. Vui lòng thử lại sau.',
+    en: 'The daily limit of VNeID requests has been reached. Please try again later.',
   },
   VNEID_NO_CERTIFICATE: {
     vi: 'Số CCCD này chưa có chứng thư số ký qua VNeID, hoặc số CCCD chưa đúng.',
@@ -75,10 +80,7 @@ const MESSAGES: Record<VneidErrorCode, { vi: string; en: string }> = {
     vi: 'CCCD này đang có một yêu cầu chờ xử lý trên VNeID. Hãy hoàn tất hoặc chờ yêu cầu đó kết thúc rồi thử lại.',
     en: 'This CCCD already has a request waiting on VNeID. Finish it or wait for it to end, then try again.',
   },
-  VNEID_REGISTRATION_LIMITED: {
-    vi: 'CCCD này đã gửi quá nhiều yêu cầu đăng ký chứng thư trong ngày. Vui lòng thử lại vào ngày mai.',
-    en: 'Too many certificate registrations for this CCCD today. Please try again tomorrow.',
-  },
+
   VNEID_ALREADY_REGISTERED: {
     vi: 'CCCD này đã có chứng thư miễn phí của nhà cung cấp này. Hãy chọn nhà cung cấp hoặc gói khác.',
     en: 'This CCCD already has this provider’s free certificate. Choose another provider or pack.',
@@ -272,3 +274,44 @@ export function bearerSecret(request: Request): string {
 }
 
 export const toIsoTime = (ms: number) => new Date(ms).toISOString();
+
+/** Requests per second one client (IP, or IPv6 /64) may send to a VNeID route. */
+export const PER_IP_PER_SECOND = 3;
+
+/**
+ * Requests per second the whole service takes on each route, from every client
+ * together. There is no daily quota: these cut a flood -- many addresses at
+ * once (DDoS) included -- before it reaches CSign or anyone's phone, and the
+ * per-IP window limits of each route stay on top of them.
+ */
+export const SERVICE_PER_SECOND = {
+  /** A push to a phone and a CSign call each. */
+  sign: 10,
+  registrations: 5,
+  /** A CSign call each. */
+  credentials: 20,
+  'registrations-status': 20,
+  providers: 20,
+  /** Finalize asks a TSA; status is the page polling every few seconds. */
+  finalize: 20,
+  status: 100,
+  /** Asked once per page load by every visitor. */
+  access: 100,
+} as const;
+
+export type RateLimitedRoute = keyof typeof SERVICE_PER_SECOND;
+
+/** The 429 to send when `route` is over either per-second limit, else null. */
+export function perSecondLimit(route: RateLimitedRoute, clientIp: string): Response | null {
+  const perIp = checkRateLimit(`vneid-1s:${route}:${clientIp}`, {
+    limit: PER_IP_PER_SECOND,
+    windowMs: 1000,
+  });
+  if (!perIp.allowed) return rateLimitedResponse(perIp.retryAfterSeconds);
+  const all = checkRateLimit(`vneid-1s:${route}:*`, {
+    limit: SERVICE_PER_SECOND[route],
+    windowMs: 1000,
+  });
+  if (!all.allowed) return rateLimitedResponse(all.retryAfterSeconds);
+  return null;
+}

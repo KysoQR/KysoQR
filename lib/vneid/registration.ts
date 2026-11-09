@@ -35,8 +35,6 @@ const SLOW_CHECK_MS = 60_000;
 const FAST_WINDOW_MS = 30 * 60_000;
 /** CSign may not know a fresh transactionCode yet. */
 const NOT_FOUND_GRACE_MS = 2 * 60_000;
-const PER_CITIZEN_PER_DAY = 3;
-const DAY_MS = 24 * 60 * 60_000;
 
 export interface ServicePackView {
   code: string;
@@ -188,11 +186,7 @@ export async function startRegistration(
 
   const key = citizenKey(deps.keys, input.citizenPid);
   const now = deps.now();
-  if (deps.store.countRegistrationsSince(key, now - DAY_MS) >= PER_CITIZEN_PER_DAY) {
-    throw new VneidError('VNEID_REGISTRATION_LIMITED', 'daily registrations reached', {
-      retryAfterSeconds: 60 * 60,
-    });
-  }
+
   const id = randomUUID();
   const requestId = randomUUID();
   const reserved = deps.store.reserveRegistration(

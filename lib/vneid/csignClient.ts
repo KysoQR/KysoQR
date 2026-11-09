@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { sanitizeLogText } from '../cas/casPayload';
-import { fetchWithTimeout, isTimeoutError } from '../fetchWithTimeout';
+import { fetchWithTimeout, isTimeoutError, readBefore } from '../fetchWithTimeout';
 import { logCsignExchange } from './csignLog';
 
 /**
@@ -439,7 +439,12 @@ function jwtExpiryMs(token: string): number | undefined {
   }
 }
 
-async function readLimited(response: Response, path: string, maxBytes: number): Promise<string> {
+async function readLimited(
+  response: Response,
+  path: string,
+  maxBytes: number,
+  deadline: number
+): Promise<string> {
   const tooLarge = (size: string) =>
     new CsignError('UPSTREAM', path, `answer too large (${size}, limit ${maxBytes} bytes)`, {
       httpStatus: response.status,
@@ -454,7 +459,15 @@ async function readLimited(response: Response, path: string, maxBytes: number): 
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
-    const { done, value } = await reader.read();
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await readBefore(reader, deadline);
+    } catch (error) {
+      if (isTimeoutError(error))
+        throw new CsignError('TIMEOUT', path, 'answer not received in time');
+      throw new CsignError('UPSTREAM', path, 'answer could not be read');
+    }
+    const { done, value } = chunk;
     if (done) break;
     total += value.byteLength;
     if (total > maxBytes) {
@@ -531,7 +544,8 @@ export class CsignClient implements CsignApi {
 
     let raw: string;
     try {
-      raw = await readLimited(response, path, maxBytes);
+      // The whole exchange, body included, within the one timeout.
+      raw = await readLimited(response, path, maxBytes, startedAt + CSIGN_TIMEOUT_MS);
     } catch (error) {
       logCsignExchange({
         path,

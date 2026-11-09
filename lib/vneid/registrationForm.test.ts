@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { checkRegistrationForm, EMPTY_REGISTRATION_FORM } from './registrationForm';
+import {
+  checkRegistrationForm,
+  copyPermanentToLiving,
+  EMPTY_REGISTRATION_FORM,
+} from './registrationForm';
 
 const NOW = Date.UTC(2026, 10, 5, 3, 0, 0);
 const VALID = {
@@ -86,5 +90,25 @@ describe('checkRegistrationForm', () => {
     const override = String.fromCharCode(0x202e);
     const result = checkRegistrationForm({ ...VALID, permanentCityText: `Hà${override} Nội` }, NOW);
     expect(result.ok && result.userInfo.permanentCityText).toBe('Hà Nội');
+  });
+});
+
+describe('copyPermanentToLiving', () => {
+  it('copies the three permanent-address fields and leaves the rest alone', () => {
+    const form = {
+      ...VALID,
+      permanentAddress: '1 Lê Lợi',
+      permanentVillageText: 'Bến Nghé',
+      permanentCityText: 'TP. Hồ Chí Minh',
+      livingPlaceAddress: 'cũ',
+    };
+    const copied = copyPermanentToLiving(form);
+    expect(copied).toEqual({
+      ...form,
+      livingPlaceAddress: '1 Lê Lợi',
+      livingPlaceVillageText: 'Bến Nghé',
+      livingPlaceCityText: 'TP. Hồ Chí Minh',
+    });
+    expect(form.livingPlaceAddress).toBe('cũ');
   });
 });

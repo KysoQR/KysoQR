@@ -14,6 +14,9 @@ export const MAX_PAGE_SIDE_PT = 14_400;
  * every /ObjStm while loading, with no cap of its own. */
 export const MAX_OBJSTM_INFLATED_BYTES = 32 * 1024 * 1024;
 
+/** `/ByteRange` occurrences accepted in a file to sign (real files: a few). */
+export const MAX_BYTE_RANGES = 100;
+
 /** Bytes reserved for the CMS inside /Contents (hex doubles it in the file). */
 export const DEFAULT_CONTENTS_BYTES = 16 * 1024;
 export const MAX_CONTENTS_BYTES = 64 * 1024;

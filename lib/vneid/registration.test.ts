@@ -138,11 +138,9 @@ describe('certificate registration', () => {
     });
   });
 
-  it('allows a few registrations per citizen and day', async () => {
+  it('lets a citizen register again after failed tries, with no daily cap', async () => {
     ctx.csign.registerError = new CsignError('UPSTREAM', '/api/credentials/register', 'down');
-    for (let i = 0; i < 3; i += 1) await reject(start(), 'VNEID_UPSTREAM');
-    await reject(start(), 'VNEID_REGISTRATION_LIMITED');
-    ctx.clock.advance(24 * 60 * 60_000 + 1);
+    for (let i = 0; i < 4; i += 1) await reject(start(), 'VNEID_UPSTREAM');
     ctx.csign.registerError = undefined;
     await expect(start()).resolves.toMatchObject({ status: 'PENDING' });
   });

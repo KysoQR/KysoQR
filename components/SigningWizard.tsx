@@ -46,6 +46,7 @@ import {
   type VneidSignerValue,
 } from './vneid/VneidSignerPanel';
 import { VneidWaitingCard } from './vneid/VneidWaitingCard';
+import { useVneidAccess } from '@/lib/vneid/client/useVneidAccess';
 import { useVneidSigning } from '@/lib/vneid/client/useVneidSigning';
 import { ScrollCue } from './ScrollCue';
 import Footer from './Footer';
@@ -279,6 +280,9 @@ export function SigningWizard({
   const [signerConfig, setSignerConfig] = useState<CasSignerConfigValue>(DEFAULT_SIGNER_CONFIG);
   const [signatureFields, setSignatureFields] = useState<SignatureFieldProps[]>([]);
   const [signingMethod, setSigningMethod] = useState<SigningMethod>('casid');
+  // VNeID is offered only to trusted networks (VNEID_TRUSTED_IPS): elsewhere the
+  // method switch is not shown and signing stays on Cas ID.
+  const vneidAllowed = useVneidAccess();
   const [vneidSigner, setVneidSigner] = useState<VneidSignerValue>(EMPTY_VNEID_SIGNER);
   const [signerPanelOpen, setSignerPanelOpen] = useState(false);
   /** The VNeID-signed file, kept for "Tiếp tục ký" (no identityKey to re-download with). */
@@ -382,6 +386,14 @@ export function SigningWizard({
   const [placementVisiblePage, setPlacementVisiblePage] = useState(1);
   const [placementPageCount, setPlacementPageCount] = useState<number | null>(null);
   const [placementZoomFactor, setPlacementZoomFactor] = useState(1);
+  /** Where the placement step was left for the QR / VNeID step (file, page,
+   * zoom). Coming back to that same file reopens the PDF there and leaves
+   * the side columns as they were -- see the existing-signature effect. */
+  const [returnView, setReturnView] = useState<{
+    file: File;
+    page: number;
+    zoom: number;
+  } | null>(null);
 
   const [signRequestId, setSignRequestId] = useState<string | null>(null);
   const [qrContent, setQrContent] = useState<string | null>(null);
@@ -505,10 +517,12 @@ export function SigningWizard({
 
   // Silently check the uploaded file for signature(s) it already carries, so
   // the sidebar can surface them without ever blocking or delaying the
-  // placement/sign flow. Only relevant on the upload/placement step — reset
-  // as soon as the file changes or the wizard moves past it.
+  // placement/sign flow. Only relevant on the upload/placement step. Coming
+  // back to it for the same file ("Quay lại chỉnh sửa", or out of the VNeID
+  // wait) checks nothing again: what was found and which columns are open
+  // stay as the user left them.
   useEffect(() => {
-    if (!file || step !== 'upload') {
+    if (!file) {
       // Reset is intentionally synchronous: this effect exists specifically
       // to keep existingSignatures/signatureSidebarOpen in sync with
       // file/step, so there is no "external system" to defer to here.
@@ -518,10 +532,16 @@ export function SigningWizard({
       setCheckingSignatures(false);
       return;
     }
+    if (step !== 'upload' || returnView?.file === file) {
+      setCheckingSignatures(false);
+      return;
+    }
 
     let cancelled = false;
     (async () => {
       setCheckingSignatures(true);
+      // A new file: what the previous one carried must not show meanwhile.
+      setExistingSignatures([]);
       try {
         const form = new FormData();
         form.append('file', file);
@@ -551,8 +571,10 @@ export function SigningWizard({
         // column's height. Both are fixed at the source now.
         setExistingSignatures(signatures);
         if (signatures.length > 0) {
+          // Only opens the history column: a signer panel the user opened
+          // while the check was running stays open (the grid has room for
+          // all three columns), one still closed stays closed.
           setSignatureSidebarOpen(true);
-          setSignerPanelOpen(false);
         } else {
           setSignerPanelOpen(true);
         }
@@ -568,7 +590,7 @@ export function SigningWizard({
     return () => {
       cancelled = true;
     };
-  }, [file, step]);
+  }, [file, step, returnView]);
 
   const handleFileSelected = (selected: File | null) => {
     if (!selected) return;
@@ -592,14 +614,21 @@ export function SigningWizard({
   const showSignerColumn = !file || signerPanelOpen;
 
   const toggleSigningMode = useCallback(() => {
-    setSignerPanelOpen((prev) => {
-      const next = !prev;
-      if (next && signatureFields.length === 0) {
-        signaturePlacementRef.current?.addField();
-      }
-      return next;
-    });
-  }, [signatureFields.length]);
+    const next = !signerPanelOpen;
+    setSignerPanelOpen(next);
+    // Kept out of a state updater: React runs updaters while rendering (twice
+    // in development), and addField() updates SignaturePlacement's state too.
+    if (next && signatureFields.length === 0) {
+      signaturePlacementRef.current?.addField();
+    }
+  }, [signerPanelOpen, signatureFields.length]);
+  // One more box on the page in view: one signature can show in several places
+  // (CAS and VNeID alike); VNeID takes at most VNEID_MAX_FIELDS.
+  const canAddField = !(signingMethod === 'vneid' && signatureFields.length >= VNEID_MAX_FIELDS);
+  const addSignatureBox = useCallback(() => {
+    if (!signerPanelOpen) setSignerPanelOpen(true);
+    signaturePlacementRef.current?.addField();
+  }, [signerPanelOpen]);
   const fieldsOnVisiblePage = signatureFields.filter(
     (field) => field.page === placementVisiblePage
   ).length;
@@ -660,6 +689,7 @@ export function SigningWizard({
       }
       // Only for the download file name; no Cas ID session keys are written.
       window.localStorage.setItem(LS_KEYS.documentName, file.name);
+      setReturnView({ file, page: placementVisiblePage, zoom: placementZoomFactor });
       setStep('vneid');
       return;
     }
@@ -696,13 +726,24 @@ export function SigningWizard({
       setSignRequestId(data.signRequestId);
       setQrContent(data.qrContent);
       setStatus('PENDING');
+      setReturnView({ file, page: placementVisiblePage, zoom: placementZoomFactor });
       setStep('scan');
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
     }
-  }, [file, signatureFields, signerConfig, i18n.language, signingMethod, vneid, vneidSigner]);
+  }, [
+    file,
+    signatureFields,
+    signerConfig,
+    i18n.language,
+    signingMethod,
+    vneid,
+    vneidSigner,
+    placementVisiblePage,
+    placementZoomFactor,
+  ]);
 
   /** Shared fetch+error-handling for /api/sign/download — used both to show
    * the inline preview (fetchSignedPdfOnce, below) and to feed a fresh File
@@ -899,6 +940,7 @@ export function SigningWizard({
     }
     setStep('upload');
     setFile(null);
+    setReturnView(null);
     setSignatureFields([]);
     setSignerConfigJustRevealed(false);
     setSignerConfig(DEFAULT_SIGNER_CONFIG);
@@ -1010,7 +1052,7 @@ export function SigningWizard({
   return (
     <div
       className={`flex min-h-screen flex-col text-text-main ${
-        step === 'upload' && file ? 'bg-[#222528]' : 'bg-[#F5FBF7]'
+        step === 'upload' && file ? 'bg-[#222528]' : 'bg-page-bg'
       }`}
     >
       {/* Header + PDF toolbar, stuck together at the top of the page
@@ -1149,6 +1191,17 @@ export function SigningWizard({
                       })}
                     </span>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={addSignatureBox}
+                    disabled={!canAddField}
+                    title={t('sign.addField')}
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-500/60 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/10 hover:text-emerald-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Icon icon="lucide:plus" className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">{t('sign.addField')}</span>
+                  </button>
 
                   <button
                     type="button"
@@ -1311,13 +1364,16 @@ export function SigningWizard({
                     fieldSubLabel={
                       signingMethod === 'vneid' ? t('vneid.fieldSubLabel') : undefined
                     }
+                    initialView={returnView?.file === file ? returnView : undefined}
                   />
                 </StickyAnchorColumn>
 
                 {showSignerColumn && (
                   <StickyAnchorColumn
                     railHeight={columnRailHeight}
-                    railClassName="max-lg:order-first"
+                    // Light like the signer cards it holds (the PDF and the history
+                    // column stay dark); on the rail so it runs the full column height.
+                    railClassName="max-lg:order-first bg-page-bg lg:border-l lg:border-border-subtle"
                     contentHeight={formContentHeight}
                     stickyOffset={stickyOffset}
                     viewportHeight={viewportHeight}
@@ -1325,13 +1381,13 @@ export function SigningWizard({
                     className="flex flex-col"
                     contentRef={registerFormContentRef}
                   >
-                    <div className="flex min-h-full flex-col gap-3.5 border-l border-[#33373b] bg-[#222528] p-4">
+                    <div className="flex min-h-full flex-col gap-3.5 p-4">
                       <div className="flex items-start justify-between">
                         <div>
-                          <h3 className="text-sm font-bold text-white">
+                          <h3 className="text-sm font-bold text-text-main">
                             {`(1) ${t('sign.configTitle')}`}
                           </h3>
-                          <p className="mt-0.5 text-xs text-gray-400">
+                          <p className="mt-0.5 text-xs text-text-muted">
                             {t('sign.configSubtitle')}
                           </p>
                         </div>
@@ -1339,7 +1395,7 @@ export function SigningWizard({
                           type="button"
                           onClick={() => setSignerPanelOpen(false)}
                           aria-label={t('common.close')}
-                          className="rounded-full p-1 text-gray-400 transition hover:bg-[#33373b] hover:text-white"
+                          className="rounded-full p-1 text-text-muted transition hover:bg-surface-soft-strong hover:text-text-main"
                           title={t('common.close')}
                         >
                           <Icon icon="lucide:x" className="h-4 w-4" />
@@ -1351,7 +1407,7 @@ export function SigningWizard({
                         className={`flex w-full shrink-0 cursor-pointer flex-col items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed px-5 py-7 text-center transition ${
                           dragCounter > 0
                             ? 'border-primary bg-surface-soft-strong ring-2 ring-primary/40'
-                            : 'border-primary/50 bg-[#F0FBF4] hover:border-primary hover:bg-surface-soft-strong'
+                            : 'border-primary/50 bg-white hover:border-primary hover:bg-surface-soft'
                         }`}
                         onDragEnter={(e) => {
                           e.preventDefault();
@@ -1416,7 +1472,9 @@ export function SigningWizard({
                               className="pointer-events-none absolute -inset-2 animate-pulse rounded-xl ring-2 ring-primary"
                             />
                           )}
-                          <SigningMethodSwitch value={signingMethod} onChange={setSigningMethod} />
+                          {vneidAllowed && (
+                            <SigningMethodSwitch value={signingMethod} onChange={setSigningMethod} />
+                          )}
                           {signingMethod === 'vneid' ? (
                             <VneidSignerPanel value={vneidSigner} onChange={setVneidSigner} />
                           ) : (
@@ -1443,7 +1501,7 @@ export function SigningWizard({
                       </button>
 
                       {uploadError && (
-                        <div className="rounded-md border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
+                        <div className="rounded-xl border border-error-border bg-error-bg px-3.5 py-2.5 text-sm text-error-text">
                           {uploadError}
                         </div>
                       )}

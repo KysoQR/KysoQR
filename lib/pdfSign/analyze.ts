@@ -11,6 +11,7 @@ import {
 import { PdfSignError } from './errors.ts';
 import { MAX_PAGES, MAX_PDF_BYTES } from './limits.ts';
 import {
+  assertFewByteRanges,
   assertNoObjectStreamBomb,
   assertPdfHeader,
   findLastStartXref,
@@ -209,6 +210,7 @@ export async function loadPdfForSigning(
 
 /** What the caller needs to decide whether to go on (cheap enough to be a job of its own). */
 export async function analyzePdf(pdf: Buffer): Promise<PdfAnalysis> {
+  assertFewByteRanges(pdf);
   const { analysis } = await loadPdfForSigning(pdf);
   return analysis;
 }

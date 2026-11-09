@@ -67,6 +67,19 @@ export const EMPTY_REGISTRATION_FORM: RegistrationForm = Object.fromEntries(
   REGISTRATION_FIELDS.map((field) => [field, field === 'nationalityCode' ? 'VN' : ''])
 ) as RegistrationForm;
 
+const LIVING_FROM_PERMANENT: [RegistrationField, RegistrationField][] = [
+  ['livingPlaceAddress', 'permanentAddress'],
+  ['livingPlaceVillageText', 'permanentVillageText'],
+  ['livingPlaceCityText', 'permanentCityText'],
+];
+
+/** "Same as the permanent address": the living-place fields copied from it. */
+export function copyPermanentToLiving(form: RegistrationForm): RegistrationForm {
+  const next = { ...form };
+  for (const [living, permanent] of LIVING_FROM_PERMANENT) next[living] = form[permanent];
+  return next;
+}
+
 /** userInfo as CSign wants it (dates as dd/MM/yyyy), without the CCCD. */
 export type RegistrationUserInfoFields = Partial<Record<RegistrationField, string>>;
 
