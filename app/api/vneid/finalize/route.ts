@@ -1,4 +1,5 @@
 import { MAX_PDF_BYTES } from '@/lib/pdfSign/limits';
+import { vneidAccessDenied } from '@/lib/vneid/access';
 import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
 import { VneidError } from '@/lib/vneid/errors';
 import {
@@ -11,12 +12,14 @@ import {
   readBody,
   requireContentType,
   SECURITY_HEADERS,
+  perSecondLimit,
 } from '@/lib/vneid/http';
 import { authorizeFinalize, finalizeSigning, getVneidDeps } from '@/lib/vneid/service';
 
 export const runtime = 'nodejs';
 
 const ERRORS = documentedErrors([
+  { error: 'VNEID_ACCESS_DENIED' },
   { error: 'VNEID_FORBIDDEN_ORIGIN' },
   { error: 'VNEID_UNSUPPORTED_MEDIA_TYPE' },
   { error: 'VNEID_LENGTH_REQUIRED' },
@@ -42,6 +45,11 @@ const ERRORS = documentedErrors([
  * Returns the signed PDF once it passed the final check.
  */
 export async function POST(request: Request): Promise<Response> {
+  // Only clients in VNEID_TRUSTED_IPS (when set) may use VNeID at all.
+  const denied = vneidAccessDenied(request);
+  if (denied) return denied;
+  const tooFast = perSecondLimit('finalize', clientIpFromRequest(request));
+  if (tooFast) return tooFast;
   const rateLimit = checkRateLimit(`vneid-finalize:${clientIpFromRequest(request)}`, {
     limit: 30,
     windowMs: 60_000,

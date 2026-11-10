@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { VneidError } from './errors';
-import { bearerSecret, checkOrigin, declaredLength, languageOf, readBody } from './http';
+import {
+  bearerSecret,
+  checkOrigin,
+  declaredLength,
+  languageOf,
+  PER_IP_PER_SECOND,
+  perSecondLimit,
+  readBody,
+  SERVICE_PER_SECOND,
+} from './http';
 import { verifyTurnstile } from './turnstile';
 
 const request = (headers: Record<string, string>, body?: string) =>
@@ -112,5 +121,33 @@ describe('verifyTurnstile', () => {
     vi.restoreAllMocks();
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network'));
     expect(await codeOf(() => verifyTurnstile(withToken, 'x'))).toBe('VNEID_CHALLENGE_FAILED');
+  });
+});
+
+describe('perSecondLimit', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('caps one client per second, then the whole service per second, and recovers a second later', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-09T00:00:00Z'));
+    for (let i = 0; i < PER_IP_PER_SECOND; i += 1) {
+      expect(perSecondLimit('sign', '203.0.113.1')).toBeNull();
+    }
+    const tooFast = perSecondLimit('sign', '203.0.113.1');
+    expect(tooFast?.status).toBe(429);
+    expect(tooFast?.headers.get('Retry-After')).toBe('1');
+
+    // Many addresses at once: the service-wide cap of the route stops them.
+    let allowed = PER_IP_PER_SECOND;
+    for (let i = 2; i < 50; i += 1) {
+      if (perSecondLimit('sign', `203.0.113.${i}`) === null) allowed += 1;
+    }
+    expect(allowed).toBe(SERVICE_PER_SECOND.sign);
+    expect(perSecondLimit('status', '203.0.113.60')).toBeNull();
+
+    vi.setSystemTime(new Date('2026-11-09T00:00:01.100Z'));
+    expect(perSecondLimit('sign', '203.0.113.1')).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ import { CsignError } from './csignClient';
 import { VneidError } from './errors';
 import {
   appearanceFor,
+  configWarnings,
   authorizeFinalize,
   CONFIRM_WINDOW_MS,
   finalizeSigning,
@@ -22,7 +23,7 @@ import {
   TRANSACTION_TTL_MS,
 } from './service';
 import { CITIZEN_PID, createTestContext, type TestContext, vneidIdentity } from './testKit';
-import { requestTimestamp, TsaError } from './tsa';
+import { requestTimestamp, setTsaTrustedRootsForTests, TsaError } from './tsa';
 
 const sha256 = (data: Uint8Array) => createHash('sha256').update(data).digest();
 
@@ -127,6 +128,7 @@ describe('VNeID signing service', () => {
 
   it('stamps the signature once, at the first finalize, and the file still verifies', async () => {
     const tsa = createTestTsa();
+    setTsaTrustedRootsForTests([tsa.identity.rootPem]);
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
       async (_input, init) =>
         new Response(new Uint8Array(await tsa.respond(Buffer.from(init!.body as Uint8Array))), {
@@ -168,6 +170,7 @@ describe('VNeID signing service', () => {
 
     // A token over some other signature is refused when embedding.
     const tsa = createTestTsa();
+    setTsaTrustedRootsForTests([tsa.identity.rootPem]);
     const wrong = createTestContext();
     wrong.deps.tsa = async () => ({
       tokenDer: await tsa.token(randomBytes(256)),
@@ -402,6 +405,25 @@ describe('VNeID signing service', () => {
     await expect(start(ctx)).resolves.toBeDefined();
   });
 
+  it('tells an identity-service (TTXT) failure apart from other provider errors', async () => {
+    const ctx = createTestContext();
+    const failWith = async (errorCode: string, citizenPid?: string) => {
+      const started = await start(ctx, citizenPid ? { citizenPid } : {});
+      ctx.csign.status = { statusCode: 0, resultCode: undefined, errorCode, signatures: [] };
+      ctx.clock.advance(15_000);
+      return getStatus(ctx.deps, {
+        transactionId: started.transactionId,
+        clientSecret: started.clientSecret,
+      });
+    };
+    // What the UAT gateway answered: "Lỗi kết nối tới TTXT, vui lòng thử lại sau".
+    expect(await failWith('errorcode4001')).toMatchObject({
+      status: 'FAILED',
+      reason: 'IDENTITY_SERVICE',
+    });
+    expect(await failWith('errorcode4009')).toMatchObject({ status: 'FAILED', reason: 'PROVIDER' });
+  });
+
   it('enforces the service-wide daily cap', async () => {
     const ctx = createTestContext({ config: { dailyCap: 1 } });
     await start(ctx);
@@ -458,20 +480,42 @@ describe('VNeID signing service', () => {
   });
 });
 
+describe('configWarnings', () => {
+  it('names what leaves production open, and says nothing in development', () => {
+    vi.stubEnv('TURNSTILE_SECRET', '');
+    const config = createTestContext().deps.config;
+    const open = {
+      ...config,
+      requireCode: false,
+      webhook: { organizationId: 'org', secrets: ['abc123'] },
+    };
+    const production = configWarnings(open, true).join('\n');
+    expect(production).toMatch(/TURNSTILE_SECRET/);
+    expect(production).toMatch(/VNEID_REQUIRE_CODE/);
+    expect(production).toMatch(/CSIGN_WEBHOOK_SECRET/);
+    expect(production).not.toContain('abc123');
+    expect(configWarnings({ ...open, webhook: undefined }, false)).toEqual([]);
+    vi.unstubAllEnvs();
+  });
+});
+
 describe('appearanceFor', () => {
   const NBSP = String.fromCharCode(0xa0);
 
-  it('writes the lines CAS writes, in Vietnam time, to the second of /M', () => {
+  it('writes the date and time in Vietnam time, to the second of /M, under VNeID and kysoqr.com', () => {
     // /M of this instant is D:20261009034217Z (seconds are cut, not rounded).
     const at = Date.UTC(2026, 9, 9, 3, 42, 17, 900);
     expect(appearanceFor('Nguyễn Văn A', 'vi', at)).toEqual({
       name: 'Nguyễn Văn A',
-      details: [`Ngày:${NBSP}09/10/2026${NBSP}10:42:17`, '+07:00'],
+      details: [`Ngày ký:${NBSP}09/10/2026`, `Giờ ký:${NBSP}10:42:17${NBSP}(+07:00)`],
+      logoCaption: 'Ký bằng VNeID',
+      note: 'Ký bằng kysoqr.com',
     });
     // Past midnight in Vietnam while still the old year in UTC.
-    expect(appearanceFor('A', 'en', Date.UTC(2026, 11, 31, 17, 0, 5)).details).toEqual([
-      `Date:${NBSP}01/01/2027${NBSP}00:00:05`,
-      '+07:00',
-    ]);
+    expect(appearanceFor('A', 'en', Date.UTC(2026, 11, 31, 17, 0, 5))).toMatchObject({
+      details: [`Date:${NBSP}01/01/2027`, `Time:${NBSP}00:00:05${NBSP}(+07:00)`],
+      logoCaption: 'Signed with VNeID',
+      note: 'Signed with kysoqr.com',
+    });
   });
 });

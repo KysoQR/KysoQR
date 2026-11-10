@@ -1,4 +1,5 @@
 import { SignatureField, SignatureFieldValidationError } from '@/lib/domain/SignatureField';
+import { vneidAccessDenied } from '@/lib/vneid/access';
 import { MAX_PDF_BYTES } from '@/lib/pdfSign/limits';
 import { isValidPdfUpload } from '@/lib/pdfValidation';
 import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
@@ -13,6 +14,7 @@ import {
   languageOf,
   requireContentType,
   toIsoTime,
+  perSecondLimit,
 } from '@/lib/vneid/http';
 import { getVneidDeps, startSigning } from '@/lib/vneid/service';
 import { verifyTurnstile } from '@/lib/vneid/turnstile';
@@ -26,6 +28,7 @@ const MAX_FIELDS_JSON_CHARS = 4096;
 const CREDENTIAL_ID_PATTERN = /^[0-9A-Fa-f]{1,64}$/;
 
 const ERRORS = documentedErrors([
+  { error: 'VNEID_ACCESS_DENIED' },
   { error: 'VNEID_FORBIDDEN_ORIGIN' },
   { error: 'VNEID_UNSUPPORTED_MEDIA_TYPE' },
   { error: 'VNEID_LENGTH_REQUIRED' },
@@ -56,6 +59,11 @@ const invalid = (reason: string) => new VneidError('VNEID_INVALID_INPUT', reason
  * other identifier (requestId, documentId, digest...) is generated server-side.
  */
 export async function POST(request: Request): Promise<Response> {
+  // Only clients in VNEID_TRUSTED_IPS (when set) may use VNeID at all.
+  const denied = vneidAccessDenied(request);
+  if (denied) return denied;
+  const tooFast = perSecondLimit('sign', clientIpFromRequest(request));
+  if (tooFast) return tooFast;
   const clientIp = clientIpFromRequest(request);
   const rateLimit = checkRateLimit(`vneid-sign:${clientIp}`, { limit: 30, windowMs: 10 * 60_000 });
   if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);

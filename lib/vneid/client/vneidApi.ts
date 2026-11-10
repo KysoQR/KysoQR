@@ -85,7 +85,13 @@ export type VneidStatus =
 
 export interface VneidStatusView {
   status: VneidStatus;
-  reason?: 'REFUSED' | 'TIMEOUT' | 'SIGNATURE_UNUSABLE' | 'CODE_ATTEMPTS' | 'PROVIDER';
+  reason?:
+    | 'REFUSED'
+    | 'TIMEOUT'
+    | 'SIGNATURE_UNUSABLE'
+    | 'CODE_ATTEMPTS'
+    | 'IDENTITY_SERVICE'
+    | 'PROVIDER';
   confirmDeadline: string;
   expiresAt: string;
   codeRequired: boolean;

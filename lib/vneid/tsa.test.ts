@@ -6,6 +6,7 @@ import {
   buildTimestampRequest,
   newNonce,
   requestTimestamp,
+  setTsaTrustedRootsForTests,
   timestampFromAny,
   TsaError,
 } from './tsa';
@@ -18,6 +19,7 @@ describe('requestTimestamp', () => {
 
   beforeAll(() => {
     tsa = createTestTsa();
+    setTsaTrustedRootsForTests([tsa.identity.rootPem]);
   });
 
   beforeEach(() => {
@@ -49,6 +51,15 @@ describe('requestTimestamp', () => {
     }
     return 'no error';
   }
+
+  it('refuses a token signed by a TSA it does not trust (e.g. one injected on an http path)', async () => {
+    const stranger = createTestTsa();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, request) => {
+      const body = Buffer.from(request!.body as Uint8Array);
+      return new Response(new Uint8Array(await stranger.respond(body)), { status: 200 });
+    });
+    expect(await failureOf(() => requestTimestamp(signature, { url: URL }))).toMatch(/not trusted/);
+  });
 
   it('returns a checked token over SHA-256 of the signature', async () => {
     const fetchSpy = answerWith();
@@ -145,6 +156,7 @@ describe('timestampFromAny', () => {
 
   beforeAll(() => {
     tsa = createTestTsa();
+    setTsaTrustedRootsForTests([tsa.identity.rootPem]);
   });
 
   beforeEach(() => {

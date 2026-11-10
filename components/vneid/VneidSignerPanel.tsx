@@ -5,6 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import { TextField } from '@/components/TextField';
 import { InlineSpinner } from '@/components/signing/Spinners';
+import { CredentialCard } from '@/components/vneid/CredentialCard';
+
+import { buttonClass, Notice } from '@/components/vneid/ui';
+import { VneidCertificateModal } from '@/components/vneid/VneidCertificateModal';
 import { VneidRegisterModal } from '@/components/vneid/VneidRegisterModal';
 import { VneidRegistrationCard } from '@/components/vneid/VneidRegistrationCard';
 import { isPlausibleCitizenPid, isRegistrationOpen } from '@/lib/vneid/client/polling';
@@ -13,6 +17,7 @@ import {
   fetchVneidCredentials,
   VneidApiError,
   type VneidCredential,
+  type VneidRegistration,
 } from '@/lib/vneid/client/vneidApi';
 
 /** Server limit (lib/pdfSign/limits.ts MAX_FIELDS). */
@@ -34,6 +39,34 @@ export const EMPTY_VNEID_SIGNER: VneidSignerValue = {
 export const isVneidSignerReady = (value: VneidSignerValue) =>
   isPlausibleCitizenPid(value.citizenPid) && value.consent && value.credentialId !== null;
 
+/** Finished registrations whose card was already shown once, kept in this
+ * browser (provider and start time only, nothing about the person). */
+const SEEN_REGISTRATIONS = 'kysoqr.vneid.seenRegistrations';
+const registrationKey = (registration: VneidRegistration) =>
+  `${registration.provider}:${registration.createdAt}`;
+
+function seenRegistrations(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(SEEN_REGISTRATIONS) ?? '[]');
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function markRegistrationSeen(key: string) {
+  try {
+    const kept = seenRegistrations()
+      .filter((item) => item !== key)
+      .slice(0, 19);
+    window.localStorage.setItem(SEEN_REGISTRATIONS, JSON.stringify([key, ...kept]));
+  } catch {
+    // Storage blocked: the card simply shows again next time.
+  }
+}
+
 /**
  * VNeID signer: CCCD + consent -> "Get certificates" -> pick one. The list
  * carries no personal data (the server never returns the holder's name), so
@@ -42,8 +75,8 @@ export const isVneidSignerReady = (value: VneidSignerValue) =>
  *
  * A CCCD without a certificate is offered to register one
  * (VneidRegisterModal); one that has certificates can still register another
- * from under the list. The registration's status is kept by the server per
- * CCCD, so "Get certificates" also asks for it: after a reload it shows up
+ * (the link under "Get certificates", or the certificate picker). The
+ * registration's status is kept by the server per CCCD, so "Get certificates" also asks for it: after a reload it shows up
  * again, and once it completes the new certificate is fetched and picked.
  */
 export function VneidSignerPanel({
@@ -63,6 +96,9 @@ export function VneidSignerPanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [noCertificate, setNoCertificate] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
+  const [hiddenRegistration, setHiddenRegistration] = useState<string | null>(null);
+  const [registerSkipIntro, setRegisterSkipIntro] = useState(false);
+  const [showCertModal, setShowCertModal] = useState(false);
   const {
     registration,
     pollError,
@@ -76,11 +112,29 @@ export function VneidSignerPanel({
     onCompleted: (credentialId) => void load(credentialId),
   });
   const registrationOpen = registration !== null && isRegistrationOpen(registration.status);
+  // A finished registration's card is shown once; later lookups leave it out.
+  const shownRegistration =
+    registration &&
+    !(registration.status === 'COMPLETED' && registrationKey(registration) === hiddenRegistration)
+      ? registration
+      : null;
 
   const pidComplete = value.citizenPid.length === 12;
   const pidValid = isPlausibleCitizenPid(value.citizenPid);
   const pidError = pidComplete && !pidValid ? t('vneid.cccdError') : null;
   const canFetch = pidValid && value.consent && !loading && !disabled;
+  const canRegister = pidValid && value.consent && !disabled && !registrationOpen;
+  // The notices below already offer to register when there is nothing to sign with.
+  const offersRegister =
+    (noCertificate && shownRegistration === null) ||
+    (credentials !== null && credentials.every((credential) => !credential.usable));
+
+  /** The registration popup; `skipIntro` when the CCCD may already have certificates. */
+  const openRegister = (skipIntro = false) => {
+    setShowCertModal(false);
+    setRegisterSkipIntro(skipIntro);
+    setShowRegister(true);
+  };
 
   const changePid = (raw: string) => {
     const digits = raw.replace(/[^0-9]/g, '').slice(0, 12);
@@ -90,6 +144,7 @@ export function VneidSignerPanel({
     setNotice(null);
     setNoCertificate(false);
     setShowRegister(false);
+    setShowCertModal(false);
     clearRegistration();
     onChange({ ...value, citizenPid: digits, credentialId: null });
   };
@@ -107,6 +162,16 @@ export function VneidSignerPanel({
       registered.status === 'fulfilled' &&
       registered.value !== null &&
       isRegistrationOpen(registered.value.status);
+    const finished =
+      registered.status === 'fulfilled' && registered.value?.status === 'COMPLETED'
+        ? registered.value
+        : null;
+    if (finished) {
+      const key = registrationKey(finished);
+      // Shown when it completes (`select`) or on the first lookup after that.
+      if (!select && seenRegistrations().includes(key)) setHiddenRegistration(key);
+      else markRegistrationSeen(key);
+    }
     if (listed.status === 'fulfilled') {
       const list = listed.value;
       setCredentials(list);
@@ -118,6 +183,9 @@ export function VneidSignerPanel({
         ...value,
         credentialId: picked ? select : usable.length === 1 ? usable[0]!.credentialId : null,
       });
+      if (list.length > 0) {
+        setShowCertModal(true);
+      }
     } else {
       setCredentials(null);
       onChange({ ...value, credentialId: null });
@@ -125,7 +193,7 @@ export function VneidSignerPanel({
       if (caught instanceof VneidApiError && caught.code === 'VNEID_NO_CERTIFICATE') {
         setNoCertificate(true);
         if (select) setNotice(t('vneid.register.notListedYet'));
-        else if (!waiting) setShowRegister(true);
+        else if (!waiting) openRegister();
       } else {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -135,6 +203,10 @@ export function VneidSignerPanel({
 
   const formatDate = (iso: string | null | undefined) =>
     iso ? new Date(iso).toLocaleDateString(language === 'en' ? 'en-GB' : 'vi-VN') : '?';
+
+  const selectedCredential = credentials?.find(
+    (credential) => credential.credentialId === value.credentialId
+  );
 
   return (
     <div className="space-y-2">
@@ -168,7 +240,7 @@ export function VneidSignerPanel({
         type="button"
         onClick={() => void load()}
         disabled={!canFetch}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-primary bg-white px-4 py-1.5 text-sm font-semibold text-primary shadow-sm transition hover:bg-surface-soft-strong disabled:cursor-not-allowed disabled:opacity-60"
+        className={`${buttonClass('secondary')} w-full`}
       >
         {loading && <InlineSpinner />}
         {loading
@@ -178,139 +250,133 @@ export function VneidSignerPanel({
             : t('vneid.fetchCredentials')}
       </button>
 
-      {error && (
-        <div className="rounded-md border border-error-border bg-error-bg px-3 py-2 text-xs text-error-text">
-          {error}
-        </div>
+      {!offersRegister && (
+        <p className="text-center text-[11px] text-text-muted">
+          {t('vneid.register.newPrompt')}{' '}
+          <button
+            type="button"
+            onClick={() => openRegister(true)}
+            disabled={!canRegister}
+            className="font-semibold text-primary hover:underline disabled:cursor-not-allowed disabled:text-text-muted disabled:no-underline"
+          >
+            {t('vneid.register.openButton')}
+          </button>
+        </p>
       )}
+
+      {error && <Notice tone="error">{error}</Notice>}
       {notice && <p className="text-xs text-text-muted">{notice}</p>}
 
-      {registration && (
+      {shownRegistration && (
         <VneidRegistrationCard
-          registration={registration}
+          registration={shownRegistration}
           pollError={pollError}
-          onRegisterAgain={() => setShowRegister(true)}
+          onRegisterAgain={() => openRegister()}
           disabled={disabled}
         />
       )}
 
-      {noCertificate && registration === null && (
-        <div className="rounded-lg border border-border-subtle bg-surface-soft px-3 py-2.5 text-xs">
+      {noCertificate && shownRegistration === null && (
+        <Notice tone="info">
           <p className="font-semibold text-text-main">{t('vneid.register.noCertificateTitle')}</p>
           <p className="mt-0.5 text-text-muted">{t('vneid.register.noCertificateText')}</p>
           <button
             type="button"
-            onClick={() => setShowRegister(true)}
+            onClick={() => openRegister()}
             disabled={disabled}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-60"
+            className={`mt-2 ${buttonClass('primary', 'sm')}`}
           >
             {t('vneid.register.openButton')}
           </button>
-        </div>
+        </Notice>
       )}
 
       {credentials && (
-        <div>
-          <span className="block text-xs font-medium text-text-main">
-            {t('vneid.credentialsTitle')}
-          </span>
-          <div
-            role="radiogroup"
-            aria-label={t('vneid.credentialsTitle')}
-            className="mt-1 space-y-1.5"
-          >
-            {credentials.map((credential) => {
-              const active = value.credentialId === credential.credentialId;
-              return (
-                <button
-                  key={credential.credentialId}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  disabled={disabled || !credential.usable}
-                  onClick={() => onChange({ ...value, credentialId: credential.credentialId })}
-                  className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-xs transition disabled:cursor-not-allowed ${
-                    active
-                      ? 'border-primary bg-surface-soft'
-                      : credential.usable
-                        ? 'border-border-subtle bg-white hover:border-primary'
-                        : 'border-border-subtle bg-gray-50 opacity-60'
-                  }`}
-                >
-                  <Icon
-                    icon={active ? 'lucide:circle-dot' : 'lucide:circle'}
-                    className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-primary' : 'text-text-muted'}`}
-                  />
-                  <span className="min-w-0 flex-1 space-y-0.5">
-                    <span className="block truncate font-semibold text-text-main">
-                      {t('vneid.issuedBy', { issuer: credential.issuer ?? '?' })}
-                    </span>
-                    <span className="block text-text-muted">
-                      {t('vneid.validity', {
-                        from: formatDate(credential.validFrom),
-                        to: formatDate(credential.validTo),
-                      })}
-                      {credential.keyBits
-                        ? ` · ${t('vneid.keyBits', { bits: credential.keyBits })}`
-                        : ''}
-                    </span>
-                    <span className="block truncate font-mono text-[10px] text-text-muted">
-                      {credential.credentialId}
-                    </span>
-                    {!credential.usable && credential.reason && (
-                      <span className="block font-medium text-error-text">
-                        {t(`vneid.unusable.${credential.reason}`)}
-                      </span>
-                    )}
-                    {credential.usable && !credential.chainVerified && (
-                      <span
-                        className="mt-0.5 inline-flex rounded-full bg-warning-bg px-2 py-0.5 text-[10px] font-medium text-warning-text"
-                        title={t('vneid.chainMismatchHint')}
-                      >
-                        {t('vneid.chainMismatch')}
-                      </span>
-                    )}
-                    {credential.usable && credential.chainVerified && !credential.rootTrusted && (
-                      <span
-                        className="mt-0.5 inline-flex rounded-full bg-warning-bg px-2 py-0.5 text-[10px] font-medium text-warning-text"
-                        title={t('vneid.testRootHint')}
-                      >
-                        {t('vneid.testRoot')}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        <div className="space-y-1.5">
           {credentials.every((credential) => !credential.usable) ? (
-            <p className="mt-1 text-xs text-error-text">{t('vneid.noUsable')}</p>
+            <Notice tone="info">
+              <p className="font-medium text-error-text">
+                {t('vneid.noUsable')}
+                {!registrationOpen && (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      onClick={() => openRegister()}
+                      disabled={disabled}
+                      className="font-semibold text-primary underline disabled:opacity-60"
+                    >
+                      {t('vneid.register.openButton')}
+                    </button>
+                  </>
+                )}
+              </p>
+            </Notice>
           ) : (
-            value.credentialId === null && (
-              <p className="mt-1 text-xs text-text-muted">{t('vneid.selectCredential')}</p>
-            )
-          )}
-          {/* Registering is open to anyone, with or without a certificate. */}
-          {!registrationOpen && (
-            <p className="mt-1.5 text-xs text-text-muted">
-              {t('vneid.register.moreHint')}{' '}
-              <button
-                type="button"
-                onClick={() => setShowRegister(true)}
-                disabled={disabled}
-                className="font-semibold text-primary underline disabled:opacity-60"
-              >
-                {t('vneid.register.openButton')}
-              </button>
-            </p>
+            <div>
+              <div className="flex items-center justify-between pb-1">
+                <span className="block text-xs font-medium text-text-main">
+                  {t('vneid.selectedCredentialLabel')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowCertModal(true)}
+                  disabled={disabled}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline disabled:opacity-60"
+                >
+                  <span>{t('vneid.changeCredential')}</span>
+                  <Icon icon="lucide:chevron-right" className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {selectedCredential ? (
+                <CredentialCard
+                  credential={selectedCredential}
+                  formatDate={formatDate}
+                  variant="button"
+                  selected
+                  disabled={disabled}
+                  onClick={() => setShowCertModal(true)}
+                  action={
+                    <span className="text-[11px] font-medium text-primary transition-transform group-hover:translate-x-0.5">
+                      {t('vneid.changeCredential')} →
+                    </span>
+                  }
+                />
+              ) : (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setShowCertModal(true)}
+                  className="flex w-full items-center justify-between rounded-xl border border-dashed border-primary/60 bg-surface-soft/60 px-3.5 py-2.5 text-left text-xs text-primary transition hover:border-primary hover:bg-surface-soft disabled:cursor-not-allowed"
+                >
+                  <span className="font-medium">
+                    {t('vneid.selectCertPrompt', { count: credentials.length })}
+                  </span>
+                  <Icon icon="lucide:chevron-right" className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           )}
         </div>
+      )}
+
+      {showCertModal && credentials && (
+        <VneidCertificateModal
+          credentials={credentials}
+          selectedCredentialId={value.credentialId}
+          onSelect={(credentialId) => onChange({ ...value, credentialId })}
+          onClose={() => setShowCertModal(false)}
+          formatDate={formatDate}
+          onRegister={registrationOpen ? undefined : () => openRegister(true)}
+        />
       )}
 
       {showRegister && (
         <VneidRegisterModal
           citizenPid={value.citizenPid}
           language={language}
+          skipIntro={registerSkipIntro}
           hasCertificates={credentials !== null && credentials.length > 0}
           onClose={() => setShowRegister(false)}
           onRegistered={(started) => {

@@ -32,3 +32,34 @@ export async function fetchWithTimeout(
 export function isTimeoutError(error: unknown): boolean {
   return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
 }
+
+/**
+ * `reader.read()` that gives up at `deadline` (ms since epoch). fetchWithTimeout
+ * only covers the wait for the headers: a server that then sends its body a
+ * byte at a time would hold the request forever. Rejects with a TimeoutError
+ * (`isTimeoutError`) and cancels the stream.
+ */
+export async function readBefore<T>(
+  reader: ReadableStreamDefaultReader<T>,
+  deadline: number
+): Promise<ReadableStreamReadResult<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => {
+        const error = new Error('body not received in time');
+        error.name = 'TimeoutError';
+        reject(error);
+      },
+      Math.max(0, deadline - Date.now())
+    );
+  });
+  try {
+    return await Promise.race([reader.read(), expired]);
+  } catch (error) {
+    if (isTimeoutError(error)) await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}

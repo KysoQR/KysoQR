@@ -1,8 +1,8 @@
 import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument, type PDFFont } from 'pdf-lib';
+import { PDFDocument, type PDFFont, type PDFRef } from 'pdf-lib';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createAppearance, fitText, wrapText } from './appearance.ts';
-import { loadAppearanceFonts } from './fonts.ts';
+import { loadAppearanceFonts, loadAppearanceImages } from './fonts.ts';
 
 let doc: PDFDocument;
 let font: PDFFont;
@@ -161,6 +161,68 @@ describe('createAppearance', () => {
       createAppearance(doc.context, { regular: font }, 200, 60, content, [0, 1, -1, 0, 0, 0])
     );
     expect(turned?.toString()).toContain('/Matrix [ 0 1 -1 0 0 0 ]');
+  });
+
+  describe("VNeID's look", () => {
+    let bold: PDFFont;
+    let logo: PDFRef;
+    beforeAll(async () => {
+      bold = await doc.embedFont(loadAppearanceFonts().semibold, { subset: true });
+      logo = (await doc.embedPng(loadAppearanceImages().vneidLogo)).ref;
+    });
+    const vneid = { ...content, logoCaption: 'Ký bằng VNeID', note: 'Ký bằng kysoqr.com' };
+    const draw = (width: number, height: number, withLogo = true) =>
+      doc.context
+        .lookup(
+          createAppearance(
+            doc.context,
+            { regular: font, bold },
+            width,
+            height,
+            vneid,
+            undefined,
+            withLogo ? logo : undefined
+          )
+        )!
+        .toString();
+    /** [size, x, y] of the logo image. */
+    const imageOf = (stream: string) => {
+      const m = /q ([\d.]+) 0 0 [\d.]+ ([\d.-]+) ([\d.-]+) cm \/Im1 Do Q/.exec(stream)!;
+      return { side: Number(m[1]), x: Number(m[2]), y: Number(m[3]) };
+    };
+
+    it('draws the logo with its caption under it, the name in semibold and the note last, without a frame', () => {
+      const stream = draw(208.08, 79.2);
+      expect(stream).toContain('/XObject');
+      expect(stream).not.toContain('c h S');
+      const image = imageOf(stream);
+      const [caption, name, ...rest] = linesOf(stream);
+      expect(caption!.font).toBe('F2');
+      expect(caption!.y).toBeLessThan(image.y);
+      expect(name!.font).toBe('F2');
+      expect(rest.map((line) => line.font)).toEqual(['F1', 'F1', 'F1']);
+      for (const line of [name!, ...rest]) expect(line.x).toBeGreaterThan(image.x + image.side);
+      expect(stream).toContain('0.09 0.45 0.25 rg BT /F1');
+    });
+
+    it('keeps the logo column about as wide as a long box is high', () => {
+      const [, name] = linesOf(draw(400, 60));
+      expect(name!.x).toBeLessThan(400 * 0.2);
+    });
+
+    it('puts the logo above the text in a narrow box', () => {
+      const stream = draw(60, 80);
+      const image = imageOf(stream);
+      const [, ...text] = linesOf(stream);
+      for (const line of text) expect(line.y).toBeLessThan(image.y);
+    });
+
+    it('falls back to the check mark when no logo is given', () => {
+      const stream = draw(208.08, 79.2, false);
+      expect(stream).not.toContain('/Im1');
+      expect(stream).not.toContain('c h S');
+      expect(stream).toContain('0.16 0.6 0.36 RG');
+    });
   });
 
   it('draws names as hex glyph ids, so no text can break out of the content stream', () => {

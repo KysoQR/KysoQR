@@ -27,7 +27,8 @@ export async function verifyTurnstile(request: Request, clientIp: string): Promi
   if (token.length === 0 || token.length > 2048) throw refuse('token missing');
 
   const form = new URLSearchParams({ secret, response: token });
-  if (clientIp !== 'unknown') form.set('remoteip', clientIp);
+  // An IPv6 client is known by its /64 here, which is not an address: left out.
+  if (clientIp !== 'unknown' && !clientIp.includes('/')) form.set('remoteip', clientIp);
   let answer: SiteverifyAnswer;
   try {
     const response = await fetchWithTimeout(

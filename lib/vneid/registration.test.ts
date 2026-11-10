@@ -138,6 +138,13 @@ describe('certificate registration', () => {
     });
   });
 
+  it('lets a citizen register again after failed tries, with no daily cap', async () => {
+    ctx.csign.registerError = new CsignError('UPSTREAM', '/api/credentials/register', 'down');
+    for (let i = 0; i < 4; i += 1) await reject(start(), 'VNEID_UPSTREAM');
+    ctx.csign.registerError = undefined;
+    await expect(start()).resolves.toMatchObject({ status: 'PENDING' });
+  });
+
   it('expires 30 minutes after it is sent', async () => {
     const view = await start();
     expect(Date.parse(view.expiresAt) - Date.parse(view.createdAt)).toBe(30 * 60_000);

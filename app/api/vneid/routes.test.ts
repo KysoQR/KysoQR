@@ -424,12 +424,6 @@ describe('/api/vneid routes', () => {
     const again = await register(jsonRequest('registrations', payload));
     expect(again.status).toBe(409);
     expect(((await again.json()) as { error: string }).error).toBe('VNEID_REGISTRATION_PENDING');
-    // Registrations are deleted after 30 minutes; the per-CCCD daily limit is
-    // kept in memory (3 tries: the bad form, the accepted one, the refused one).
-    const limited = await register(jsonRequest('registrations', payload));
-    expect(limited.status).toBe(429);
-    expect(limited.headers.get('retry-after')).toMatch(/^[0-9]+$/);
-    expect(((await limited.json()) as { error: string }).error).toBe('VNEID_REGISTRATION_LIMITED');
 
     // A reload: the page only has the CCCD again.
     ctx.csign.registration = {

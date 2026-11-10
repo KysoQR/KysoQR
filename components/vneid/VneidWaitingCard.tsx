@@ -7,6 +7,7 @@ import { SigningCard } from '@/components/signing/SigningCard';
 import { SigningStepHeader } from '@/components/signing/SigningStepHeader';
 import { InlineSpinner } from '@/components/signing/Spinners';
 import type { VneidSigningState } from '@/lib/vneid/client/useVneidSigning';
+import { buttonClass, Notice } from './ui';
 
 /**
  * Step 3 for VNeID (instead of the Cas ID QR): tells the signer what to do in
@@ -80,7 +81,7 @@ export function VneidWaitingCard({
           {phase === 'waiting' && (
             <p className="flex items-center gap-2 text-sm text-text-secondary" aria-live="polite">
               <span
-                className="h-2 w-2 animate-pulse rounded-full bg-amber-500"
+                className="h-2 w-2 animate-pulse rounded-full bg-warning-strong"
                 aria-hidden="true"
               />
               {confirmWindowOver
@@ -90,9 +91,9 @@ export function VneidWaitingCard({
           )}
 
           {state.pollWarning && phase === 'waiting' && (
-            <div className="rounded-md border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning-text">
+            <Notice tone="warning">
               {t('vneid.waiting.statusWarning')} {state.pollWarning}
-            </div>
+            </Notice>
           )}
 
           {phase === 'needsCode' && (
@@ -119,12 +120,12 @@ export function VneidWaitingCard({
                     )
                   }
                   autoComplete="off"
-                  className="w-32 rounded-lg border border-border-subtle px-3 py-1.5 font-mono text-sm uppercase tracking-widest outline-none focus:ring-2 focus:ring-primary"
+                  className="w-32 rounded-lg border border-border-subtle px-3 py-1.5 font-mono text-sm uppercase tracking-widest outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                 />
                 <button
                   type="submit"
                   disabled={code.length !== 6}
-                  className="rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
+                  className={buttonClass('primary')}
                 >
                   {t('vneid.waiting.codeSubmit')}
                 </button>
@@ -142,14 +143,10 @@ export function VneidWaitingCard({
 
           {phase === 'finalizeFailed' && (
             <div className="space-y-2">
-              <div className="rounded-md border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
+              <Notice tone="error" className="text-sm">
                 {t('vneid.waiting.finalizeFailed')} {state.error}
-              </div>
-              <button
-                type="button"
-                onClick={onRetryFinalize}
-                className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-white"
-              >
+              </Notice>
+              <button type="button" onClick={onRetryFinalize} className={buttonClass('primary')}>
                 {t('vneid.waiting.retry')}
               </button>
             </div>
@@ -157,7 +154,7 @@ export function VneidWaitingCard({
 
           {phase === 'ended' && (
             <div className="space-y-3">
-              <div className="rounded-md border border-error-border bg-error-bg px-3 py-2 text-sm text-error-text">
+              <Notice tone="error" className="text-sm">
                 <p>
                   {t(
                     `vneid.waiting.ended.${state.status === 'REJECTED' || state.status === 'EXPIRED' ? state.status : 'FAILED'}`
@@ -167,20 +164,12 @@ export function VneidWaitingCard({
                   <p className="mt-1 text-xs">{t(`vneid.waiting.reason.${state.reason}`)}</p>
                 )}
                 {state.error && <p className="mt-1 text-xs">{state.error}</p>}
-              </div>
+              </Notice>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={onSignAgain}
-                  className="rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-white"
-                >
+                <button type="button" onClick={onSignAgain} className={buttonClass('primary')}>
                   {t('vneid.waiting.signAgain')}
                 </button>
-                <button
-                  type="button"
-                  onClick={onStartOver}
-                  className="rounded-full border border-primary bg-white px-4 py-1.5 text-sm font-semibold text-primary"
-                >
+                <button type="button" onClick={onStartOver} className={buttonClass('secondary')}>
                   {t('common.startOver')}
                 </button>
               </div>
@@ -189,11 +178,7 @@ export function VneidWaitingCard({
 
           {waiting && (
             <div className="pt-2">
-              <button
-                type="button"
-                onClick={onCancel}
-                className="rounded-full border border-border-subtle bg-white px-4 py-1.5 text-xs font-semibold text-text-secondary hover:border-primary"
-              >
+              <button type="button" onClick={onCancel} className={buttonClass('ghost', 'sm')}>
                 {t('vneid.waiting.cancel')}
               </button>
               <p className="mt-1 text-[11px] text-text-muted">{t('vneid.waiting.cancelNote')}</p>

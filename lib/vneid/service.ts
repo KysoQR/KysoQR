@@ -180,7 +180,41 @@ export function getVneidDeps(): VneidDeps {
     now: Date.now,
   };
   globalDeps[DEPS_KEY] = deps;
+  if (!config.queryStatus) {
+    console.warn(
+      '[vneid:config] VNEID_QUERY_STATUS=off: CSign query-status is never called, ' +
+        'signing results arrive by webhook only'
+    );
+  }
+  for (const warning of configWarnings(config, process.env.NODE_ENV === 'production')) {
+    console.warn(`[vneid:config] ${warning}`);
+  }
   return deps;
+}
+
+/**
+ * Settings that leave a public deployment open, said once at startup (names
+ * and facts only, never a value). Not refused: local development runs
+ * without them on purpose.
+ */
+export function configWarnings(config: VneidConfig, production: boolean): string[] {
+  const warnings: string[] = [];
+  if (production && !process.env.TURNSTILE_SECRET?.trim()) {
+    warnings.push(
+      'TURNSTILE_SECRET is empty: /sign and /registrations accept requests without a bot check ' +
+        '(the pages do not show the Turnstile widget yet: setting it alone refuses every request)'
+    );
+  }
+  if (production && !config.requireCode) {
+    warnings.push(
+      'VNEID_REQUIRE_CODE=false: whoever knows a CCCD can send any PDF to that phone to sign, ' +
+        'and gets the signed file if the citizen confirms'
+    );
+  }
+  if (config.webhook?.secrets.some((secret) => secret.length < 32)) {
+    warnings.push('CSIGN_WEBHOOK_SECRET is shorter than 32 characters');
+  }
+  return warnings;
 }
 
 // ---- input validation (the routes call these before anything else) -----------------
@@ -359,10 +393,15 @@ export function appearanceFor(name: string, language: 'vi' | 'en', signingTimeMs
   const two = (value: number) => String(value).padStart(2, '0');
   const date = `${two(local.getUTCDate())}/${two(local.getUTCMonth() + 1)}/${local.getUTCFullYear()}`;
   const time = `${two(local.getUTCHours())}:${two(local.getUTCMinutes())}:${two(local.getUTCSeconds())}`;
-  const label = language === 'en' ? 'Date' : 'Ngày';
+  const en = language === 'en';
   return {
     name,
-    details: [`${label}:${NO_BREAK_SPACE}${date}${NO_BREAK_SPACE}${time}`, '+07:00'],
+    details: [
+      `${en ? 'Date' : 'Ngày ký'}:${NO_BREAK_SPACE}${date}`,
+      `${en ? 'Time' : 'Giờ ký'}:${NO_BREAK_SPACE}${time}${NO_BREAK_SPACE}(+07:00)`,
+    ],
+    logoCaption: en ? 'Signed with VNeID' : 'Ký bằng VNeID',
+    note: en ? 'Signed with kysoqr.com' : 'Ký bằng kysoqr.com',
   };
 }
 
@@ -466,8 +505,10 @@ export async function startSigning(
     );
   }
 
-  // 2. Limits: service-wide per day, and a pause for a citizen whose requests
-  //    keep being refused or ignored (someone else typing their CCCD).
+  // 2. Limits: service-wide per day (only requests that reached CSign count),
+  //    and a pause for a citizen whose requests keep being refused or ignored
+  //    (someone else typing their CCCD). Bursts are cut by the per-second
+  //    rate limits of the routes (lib/vneid/http.ts perSecondLimit).
   const now = deps.now();
   const citizen = citizenKey(deps.keys, input.citizenPid);
   if (deps.store.countRequestsSince(now - DAY_MS) >= deps.config.dailyCap) {
@@ -798,7 +839,13 @@ export type PublicStatus =
 export interface StatusView {
   status: PublicStatus;
   /** Why it ended, for REJECTED / EXPIRED / FAILED. */
-  reason?: 'REFUSED' | 'TIMEOUT' | 'SIGNATURE_UNUSABLE' | 'CODE_ATTEMPTS' | 'PROVIDER';
+  reason?:
+    | 'REFUSED'
+    | 'TIMEOUT'
+    | 'SIGNATURE_UNUSABLE'
+    | 'CODE_ATTEMPTS'
+    | 'IDENTITY_SERVICE'
+    | 'PROVIDER';
   confirmDeadline: number;
   expiresAt: number;
   codeRequired: boolean;
@@ -817,6 +864,17 @@ export function authenticate(
   const row = deps.store.get(transactionId);
   if (!row || !safeEqual(row.clientSecretHash, presented)) throw notFound();
   return row;
+}
+
+/** CSign could not get the signature activation data from VNeID's identity
+ * centre (TTXT) or have the CA issue it (spec: errorcode4001-4003): a fault on
+ * their side, worth telling apart from other provider errors. */
+const IDENTITY_SERVICE_ERRORS = new Set(['errorcode4001', 'errorcode4002', 'errorcode4003']);
+
+function failureReason(errorCode: string | null): StatusView['reason'] {
+  if (errorCode?.startsWith('DIAG_')) return 'SIGNATURE_UNUSABLE';
+  if (errorCode && IDENTITY_SERVICE_ERRORS.has(errorCode.toLowerCase())) return 'IDENTITY_SERVICE';
+  return 'PROVIDER';
 }
 
 function viewOf(row: TransactionRow): StatusView {
@@ -840,11 +898,7 @@ function viewOf(row: TransactionRow): StatusView {
     case 'BURNED':
       return { status: 'FAILED', reason: 'CODE_ATTEMPTS', ...base };
     case 'FAILED':
-      return {
-        status: 'FAILED',
-        reason: row.errorCode?.startsWith('DIAG_') ? 'SIGNATURE_UNUSABLE' : 'PROVIDER',
-        ...base,
-      };
+      return { status: 'FAILED', reason: failureReason(row.errorCode), ...base };
   }
 }
 
@@ -858,9 +912,10 @@ export async function getStatus(
   const open = row.status === 'PENDING' || row.status === 'WAITING_USER';
   if (open && now > row.expiresAt) {
     deps.store.markEnded(row.id, 'EXPIRED', { errorCode: 'LOCAL_TIMEOUT' }, now);
-  } else if (open) {
+  } else if (open && deps.config.queryStatus) {
     // The webhook may not be configured (or reachable): ask CSign -- often
-    // while the citizen can still act, then sparingly until expiry.
+    // while the citizen can still act, then sparingly until expiry. With
+    // VNEID_QUERY_STATUS=off only the webhook moves the request on.
     const interval =
       now <= row.confirmDeadline + STATUS_POLL_GRACE_MS
         ? STATUS_CHECK_INTERVAL_MS

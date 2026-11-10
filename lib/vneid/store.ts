@@ -931,10 +931,16 @@ export class VneidStore {
 
   // ---- audit and limits -------------------------------------------------------------------
 
-  /** Signing requests (service-wide) since `since`; audit rows outlive transactions. */
+  /** Signing requests (service-wide) since `since`; audit rows outlive transactions.
+   * A request that failed before sign-hash (no certificate, bad PDF...) sent
+   * nothing to anyone's phone and is left out: made-up CCCDs cannot use up the
+   * daily cap. One whose row is already swept still counts. */
   countRequestsSince(since: number): number {
     const row = this.statement(
-      'SELECT COUNT(*) AS count FROM vneid_audit WHERE created_at > ?'
+      `SELECT COUNT(*) AS count FROM vneid_audit a
+         LEFT JOIN vneid_transactions t ON t.id = a.id
+       WHERE a.created_at > ?
+         AND (t.id IS NULL OR t.csign_transaction_id IS NOT NULL OR t.status <> 'FAILED')`
     ).get(since) as { count: number };
     return Number(row.count);
   }

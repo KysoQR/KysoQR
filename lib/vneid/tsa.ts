@@ -1,7 +1,8 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, X509Certificate } from 'node:crypto';
+import { rootCertificates } from 'node:tls';
 import * as asn1js from 'asn1js';
 import * as pkijs from 'pkijs';
-import { fetchWithTimeout, isTimeoutError } from '../fetchWithTimeout';
+import { fetchWithTimeout, isTimeoutError, readBefore } from '../fetchWithTimeout';
 import { normalizeNonce, readTimestampToken } from '../pdfSign/cms';
 
 /**
@@ -15,7 +16,10 @@ import { normalizeNonce, readTimestampToken } from '../pdfSign/cms';
  * Adobe Reader then shows the timestamp's time as the signing time.
  *
  * Every answer is checked before use: granted status, the imprint of this very
- * signature, our nonce, a time close to ours, and the token's own signature.
+ * signature, our nonce, a time close to ours, the token's own signature, and
+ * that it was signed by a time-stamping certificate that chains to a public
+ * root Node trusts (so someone on the network path to an http TSA cannot slip
+ * in a token signed with a key of their own).
  */
 
 const TIMEOUT_MS = 10_000;
@@ -25,6 +29,59 @@ const MAX_CLOCK_SKEW_MS = 5 * 60_000;
 const SHA256 = '2.16.840.1.101.3.4.2.1';
 /** PKIStatus granted (0) and grantedWithMods (1). */
 const GRANTED = new Set([0, 1]);
+/** id-kp-timeStamping (RFC 3161: the TSA's certificate must carry it). */
+const TIME_STAMPING = '1.3.6.1.5.5.7.3.8';
+const MAX_CHAIN = 5;
+
+let trustedRoots: X509Certificate[] | undefined;
+
+/** Roots a TSA certificate must chain to: Node's public roots, or `pems` (tests). */
+export function setTsaTrustedRootsForTests(pems: readonly string[] | undefined): void {
+  trustedRoots = pems?.map((pem) => new X509Certificate(pem));
+}
+
+function roots(): X509Certificate[] {
+  trustedRoots ??= rootCertificates.map((pem) => new X509Certificate(pem));
+  return trustedRoots;
+}
+
+/**
+ * The token's signing certificate (the one its SignerInfo names) must be a
+ * time-stamping certificate, valid at genTime, whose chain -- through the
+ * certificates the token carries -- ends at a trusted root. Returns why not.
+ */
+function untrustedSigner(signedData: pkijs.SignedData, genTime: Date): string | undefined {
+  const certificates = (signedData.certificates ?? [])
+    .filter((item): item is pkijs.Certificate => item instanceof pkijs.Certificate)
+    .map((item) => new X509Certificate(Buffer.from(item.toSchema().toBER(false))));
+  const sid = signedData.signerInfos[0]?.sid;
+  if (!(sid instanceof pkijs.IssuerAndSerialNumber)) return 'signer not named by serial';
+  const serial = Buffer.from(sid.serialNumber.valueBlock.valueHexView).toString('hex');
+  const signer = certificates.find(
+    (cert) => cert.serialNumber.toLowerCase().replace(/^0+/, '') === serial.replace(/^0+/, '')
+  );
+  if (!signer) return 'signer certificate not in the token';
+  if (!(signer.keyUsage ?? []).includes(TIME_STAMPING)) return 'not a time-stamping certificate';
+
+  const at = genTime.getTime();
+  const valid = (cert: X509Certificate) =>
+    Date.parse(cert.validFrom) <= at && at <= Date.parse(cert.validTo);
+  const trusted = roots();
+  let current = signer;
+  for (let depth = 0; depth < MAX_CHAIN; depth += 1) {
+    if (!valid(current)) return 'a certificate of the chain was not valid at genTime';
+    // The certificate itself is a trusted one (a self-signed test TSA, for instance).
+    if (trusted.some((root) => root.fingerprint256 === current.fingerprint256)) return undefined;
+    const signedBy = (issuer: X509Certificate) =>
+      current.checkIssued(issuer) && current.verify(issuer.publicKey);
+    const root = trusted.find(signedBy);
+    if (root) return undefined;
+    const next = certificates.find((cert) => cert !== current && cert.ca && signedBy(cert));
+    if (!next) return 'chain does not reach a trusted root';
+    current = next;
+  }
+  return 'chain too long';
+}
 
 export interface Timestamp {
   /** The TimeStampToken (CMS ContentInfo), exactly as the TSA sent it. */
@@ -76,7 +133,7 @@ export function buildTimestampRequest(signature: Uint8Array, nonce: Uint8Array):
   return Buffer.from(request.toSchema().toBER(false));
 }
 
-async function readLimited(response: Response): Promise<Buffer> {
+async function readLimited(response: Response, deadline: number): Promise<Buffer> {
   const declared = Number(response.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
     await response.body?.cancel().catch(() => undefined);
@@ -87,7 +144,13 @@ async function readLimited(response: Response): Promise<Buffer> {
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
-    const { done, value } = await reader.read();
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await readBefore(reader, deadline);
+    } catch (error) {
+      throw new TsaError(isTimeoutError(error) ? 'no answer in time' : 'answer could not be read');
+    }
+    const { done, value } = chunk;
     if (done) break;
     total += value.byteLength;
     if (total > MAX_RESPONSE_BYTES) {
@@ -158,7 +221,8 @@ export async function requestTimestamp(
     throw new TsaError(`HTTP ${response.status}`);
   }
 
-  const { status, tokenDer } = parseResponse(await readLimited(response));
+  // Body included: a TSA that trickles its answer must not hold finalize.
+  const { status, tokenDer } = parseResponse(await readLimited(response, startedAt + TIMEOUT_MS));
   if (!GRANTED.has(status)) throw new TsaError(`request not granted (status ${status})`);
   if (!tokenDer) throw new TsaError('granted without a token');
 
@@ -189,6 +253,8 @@ export async function requestTimestamp(
     verified = false;
   }
   if (!verified) throw new TsaError('token signature does not verify');
+  const distrust = untrustedSigner(token.signedData, token.genTime);
+  if (distrust) throw new TsaError(`token signer is not trusted (${distrust})`);
 
   console.info('[vneid:tsa] timestamp obtained', {
     tsa: new URL(options.url).host,
@@ -197,6 +263,12 @@ export async function requestTimestamp(
     bytes: tokenDer.length,
   });
   return { tokenDer, genTime: token.genTime };
+}
+
+/** Why a token's signer is not trusted (undefined: it is); for checks and tests. */
+export function timestampSignerProblem(tokenDer: Buffer): string | undefined {
+  const token = readTimestampToken(tokenDer);
+  return untrustedSigner(token.signedData, token.genTime);
 }
 
 /**

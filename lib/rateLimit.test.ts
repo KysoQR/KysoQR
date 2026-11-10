@@ -47,7 +47,7 @@ describe('checkRateLimit table size', () => {
     vi.useRealTimers();
   });
 
-  it('refuses a new key once 50,000 are being limited, keeps limiting the old ones, and recovers when they go idle', async () => {
+  it('drops the least recently used key once 50,000 are active, so a new client still gets in', async () => {
     // A fresh module: the other tests' keys must not count against the cap.
     vi.resetModules();
     const { checkRateLimit: check } = await import('./rateLimit');
@@ -56,17 +56,14 @@ describe('checkRateLimit table size', () => {
     const options = { limit: 1, windowMs: 1_000 };
 
     for (let i = 0; i < 50_000; i += 1) expect(check(`flood:${i}`, options).allowed).toBe(true);
-    // The table is full of keys that are still inside their window.
-    const refused = check('newcomer', options);
-    expect(refused.allowed).toBe(false);
-    expect(refused.retryAfterSeconds).toBeGreaterThanOrEqual(1);
-    // Keys already tracked keep their own state.
-    expect(check('flood:0', options).allowed).toBe(false);
-
-    // A window later every bucket has refilled, so they are swept and a new key fits.
-    vi.setSystemTime(new Date('2026-11-03T00:00:02Z'));
+    // flood:1 is used again, so it is no longer the least recently used.
+    expect(check('flood:1', options).allowed).toBe(false);
+    // The table is full of keys inside their window: the oldest (flood:0) makes room.
     expect(check('newcomer', options).allowed).toBe(true);
-    expect(check('flood:1', options).allowed).toBe(true);
+    expect(check('flood:0', options).allowed).toBe(true);
+    // Keys still tracked keep their own state.
+    expect(check('flood:1', options).allowed).toBe(false);
+    expect(check('newcomer', options).allowed).toBe(false);
   });
 });
 

@@ -2,11 +2,13 @@ import { createHash } from 'node:crypto';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BOX, createSamplePdf } from '../pdfSign/testHelpers';
 import { verifyPdfSignatures } from '../verification/verifyPdfSignatures';
+import { CsignError } from './csignClient';
 import { finalizeSigning, getStatus, resetVneidServiceForTests, startSigning } from './service';
 import {
   CITIZEN_PID,
   createTestContext,
   type TestContext,
+  WEBHOOK_SECRET,
   WEBHOOK_SECRET_PREVIOUS,
   webhookDelivery,
 } from './testKit';
@@ -206,6 +208,26 @@ describe('handleWebhook', () => {
     });
   });
 
+  it('confirms a status 0/5 whatever the event is called, and asks CSign to retry when it cannot', async () => {
+    ctx.csign.queryError = new CsignError('UPSTREAM', '/api/signing/query-status', 'down');
+    const answer = await deliver({
+      eventName: 'signing.created',
+      data: signingData({ status: 5, signatures: null, errorCode: 'errorcode4004' }),
+    });
+    expect(answer.status).toBe(500);
+    expect(ctx.csign.statusQueries).toEqual([csignTransactionId]);
+    expect(ctx.deps.store.get(ticket.transactionId)!.status).toBe('PENDING');
+
+    // The retry, once query-status answers: what CSign says wins.
+    ctx.csign.queryError = undefined;
+    ctx.csign.complete();
+    await deliver({
+      eventName: 'signing.created',
+      data: signingData({ status: 5, signatures: null, errorCode: 'errorcode4004' }),
+    });
+    expect(ctx.deps.store.get(ticket.transactionId)!.status).toBe('SIGNED');
+  });
+
   it('trusts query-status over a failure event that CSign itself contradicts', async () => {
     ctx.csign.complete();
     await deliver({
@@ -229,5 +251,49 @@ describe('handleWebhook', () => {
     expect(ctx.deps.store.get(ticket.transactionId)!.status).toBe('WAITING_USER');
     ctx.deps.config = { ...ctx.deps.config, webhook: undefined };
     expect((await deliver({ id: 'evt_9' })).status).toBe(503);
+  });
+
+  it('logs every delivery in one line: outcome or refusal, never the payload', async () => {
+    const signature = ctx.csign.sign();
+    await deliver({});
+    await deliver({});
+    await deliver({ id: 'evt_2' }, 'whsec_not_the_one');
+    await deliver({ id: 'evt_3', organizationId: 'org-someone-else' });
+    const text = logs.join('\n');
+    expect(text).toContain('[vneid:webhook] signing.completed -> signed');
+    expect(text).toContain('"eventId":"evt_1"');
+    expect(text).toContain(`"csignTransactionId":"${csignTransactionId}"`);
+    expect(text).toContain('[vneid:webhook] signing.completed -> duplicate');
+    expect(text).toContain('[vneid:webhook] refused 401 invalid_signature');
+    expect(text).toContain('[vneid:webhook] refused 400 organization_mismatch');
+    expect(text).not.toContain(signature);
+    expect(text).not.toContain(WEBHOOK_SECRET);
+  });
+
+  describe('with VNEID_QUERY_STATUS=off', () => {
+    beforeEach(() => {
+      ctx.deps.config = { ...ctx.deps.config, queryStatus: false };
+    });
+
+    it('never asks CSign: only the webhook moves the request on', async () => {
+      // CSign has the signature, but nobody asks it.
+      ctx.csign.complete();
+      for (let i = 0; i < 3; i += 1) {
+        ctx.clock.advance(6_000);
+        expect(await status()).toBe('PENDING');
+      }
+      expect(ctx.csign.statusQueries).toHaveLength(0);
+      expect((await deliver({})).status).toBe(200);
+      expect(await status()).toBe('SIGNED');
+    });
+
+    it('applies a failure event as delivered, without confirming it', async () => {
+      await deliver({
+        eventName: 'signing.failed',
+        data: signingData({ status: 5, errorCode: 'errorcode4004', signatures: null }),
+      });
+      expect(ctx.csign.statusQueries).toHaveLength(0);
+      expect(await status()).toBe('REJECTED');
+    });
   });
 });

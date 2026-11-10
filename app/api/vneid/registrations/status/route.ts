@@ -1,4 +1,5 @@
 import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
+import { vneidAccessDenied } from '@/lib/vneid/access';
 import { citizenKey } from '@/lib/vneid/crypto';
 import { VneidError } from '@/lib/vneid/errors';
 import {
@@ -10,6 +11,7 @@ import {
   languageOf,
   readBody,
   requireContentType,
+  perSecondLimit,
 } from '@/lib/vneid/http';
 import { getRegistration } from '@/lib/vneid/registration';
 import { getVneidDeps, isValidCitizenPid } from '@/lib/vneid/service';
@@ -19,6 +21,7 @@ export const runtime = 'nodejs';
 const MAX_BODY_BYTES = 1024;
 
 const ERRORS = documentedErrors([
+  { error: 'VNEID_ACCESS_DENIED' },
   { error: 'VNEID_FORBIDDEN_ORIGIN' },
   { error: 'VNEID_UNSUPPORTED_MEDIA_TYPE' },
   { error: 'VNEID_LENGTH_REQUIRED' },
@@ -37,6 +40,11 @@ const ERRORS = documentedErrors([
  * registration; the page polls this. No name or other personal data out.
  */
 export async function POST(request: Request): Promise<Response> {
+  // Only clients in VNEID_TRUSTED_IPS (when set) may use VNeID at all.
+  const denied = vneidAccessDenied(request);
+  if (denied) return denied;
+  const tooFast = perSecondLimit('registrations-status', clientIpFromRequest(request));
+  if (tooFast) return tooFast;
   const rateLimit = checkRateLimit(`vneid-register-status:${clientIpFromRequest(request)}`, {
     limit: 60,
     windowMs: 60_000,

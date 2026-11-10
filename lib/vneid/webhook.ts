@@ -19,7 +19,11 @@ import { type ApplyOutcome, applyCsignResult, type CsignResult, type VneidDeps }
  *
  * Answers follow the spec: 200 {received:true} (also for events deliberately
  * ignored), 4xx/5xx {error, errorDescription}; only 500 makes CSign retry.
- * Payloads are never logged (registration.* ones carry CCCD and certificates).
+ * Every delivery is logged in one line -- event name and outcome, or why it
+ * was refused, with the event and CSign transaction ids -- but payloads never
+ * are (signatures; registration.* ones carry CCCD and certificates).
+ * With VNEID_QUERY_STATUS=off events are applied as delivered, without asking
+ * query-status, so the webhook alone can be checked end to end.
  */
 
 export const MAX_WEBHOOK_BYTES = 64 * 1024;
@@ -32,11 +36,14 @@ export interface WebhookResponse {
 }
 
 const received = (): WebhookResponse => ({ status: 200, body: { received: true } });
-const refuse = (
+function refuse(
   status: WebhookResponse['status'],
   error: string,
   errorDescription: string
-): WebhookResponse => ({ status, body: { error, errorDescription } });
+): WebhookResponse {
+  console.warn(`[vneid:webhook] refused ${status} ${error}`);
+  return { status, body: { error, errorDescription } };
+}
 
 export function verifyWebhookSignature(
   rawBody: Uint8Array,
@@ -140,16 +147,24 @@ export async function handleWebhook(
   }
 
   try {
-    if (deps.store.hasWebhookEvent(event.id)) return received();
+    if (deps.store.hasWebhookEvent(event.id)) {
+      console.info(`[vneid:webhook] ${event.eventName} -> duplicate`, { eventId: event.id });
+      return received();
+    }
 
-    const record = (csignTransactionId: string | undefined, outcome: string) =>
+    const record = (csignTransactionId: string | undefined, outcome: string) => {
       deps.store.recordWebhookEvent(
         { id: event.id, csignTransactionId, name: event.eventName, outcome },
         deps.now()
       );
+      console.info(`[vneid:webhook] ${event.eventName} -> ${outcome}`, {
+        eventId: event.id,
+        csignTransactionId,
+      });
+    };
 
     if (!event.eventName.startsWith('signing.')) {
-      // registration.* and anything new: acknowledged, not processed, not logged.
+      // registration.* and anything new: acknowledged, not processed.
       record(undefined, 'ignored');
       return received();
     }
@@ -175,12 +190,19 @@ export async function handleWebhook(
       return received();
     }
 
-    // What to apply: the event itself, or -- for a failure, or a completion
-    // without a usable signature -- what query-status says right now.
+    // What to apply: the event itself, or -- for anything that would end the
+    // transaction as a failure (signing.failed, or a status 0/5 whatever the
+    // event is called) or a completion without a signature -- what
+    // query-status says right now. A signature that comes with the event is
+    // checked with RSA anyway. With query-status off, every event is taken as
+    // delivered.
     let result = toResult(signing, eventTime);
-    const completedWithoutSignature =
-      event.eventName === 'signing.completed' && result.signatures.length === 0;
-    if (event.eventName === 'signing.failed' || completedWithoutSignature) {
+    const wouldEnd =
+      event.eventName === 'signing.failed' ||
+      (event.eventName === 'signing.completed' && result.signatures.length === 0) ||
+      result.statusCode === 0 ||
+      result.statusCode === 5;
+    if (deps.config.queryStatus && wouldEnd) {
       try {
         const confirmed = await deps.csign.queryStatus(signing.transactionId);
         result = {
@@ -190,10 +212,12 @@ export async function handleWebhook(
           signatures: confirmed.signatures.length > 0 ? confirmed.signatures : result.signatures,
         };
       } catch (error) {
+        // Not applied unconfirmed: a 500 makes CSign deliver it again later.
         console.warn('[vneid:webhook] could not confirm the event with query-status', {
           transactionId: row.id,
           reason: error instanceof CsignError ? error.kind : 'error',
         });
+        return refuse(500, 'confirmation_unavailable', 'Event could not be confirmed; retry later');
       }
     }
 

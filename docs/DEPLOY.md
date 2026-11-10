@@ -94,6 +94,16 @@ TRUSTED_IP_HEADER=x-real-ip
 
 `TRUSTED_IP_HEADER` cho app biết lấy IP người dùng từ header nào để giới hạn tốc độ. `X-Real-IP` do nginx tự đặt từ kết nối thật (xem `deploy/nginx.conf.example`) nên client không chọn được. Bỏ trống thì app tin `CF-Connecting-IP`/`X-Forwarded-For` — hai header mà ai kết nối thẳng tới app cũng gửi giả được, nên giới hạn tốc độ bị lách chỉ bằng cách đổi giá trị header mỗi request. (Trên Cloudflare Worker thì **để trống**: ở đó `CF-Connecting-IP` do chính Cloudflare đặt.)
 
+**Ký bằng VNeID (nếu bật):** khi `NODE_ENV=production`, lúc khởi động app in cảnh báo `[vneid:config] …` cho mỗi thiết lập còn để hở (chỉ nêu tên biến, không in giá trị):
+
+- `VNEID_REQUIRE_CODE=false` (mặc định): ai biết số CCCD của người khác đều gửi được một PDF bất kỳ tới điện thoại người đó. Nếu người đó bấm đồng ý (nhầm, hoặc bị lừa) thì người gửi tải được file đã ký. Đặt `VNEID_REQUIRE_CODE=true` để người ký phải gõ lại mã hiện trên VNeID. Chỉ bật khi đã xác nhận app VNeID hiển thị tên tài liệu (`documentName`).
+- `TURNSTILE_SECRET` trống: không có bước kiểm bot cho `/api/vneid/sign` và `/api/vneid/registrations`. **Lưu ý:** trang hiện chưa có widget Turnstile, nên chỉ đặt `TURNSTILE_SECRET` thì mọi yêu cầu ký sẽ bị từ chối. Cần làm widget trước.
+- `CSIGN_WEBHOOK_SECRET` ngắn hơn 32 ký tự.
+
+**Chỉ mạng tin tưởng mới dùng được VNeID:** `VNEID_TRUSTED_IPS=203.0.113.5,198.51.100.0/24` (IP lẻ hoặc dải CIDR, IPv4/IPv6, cách nhau bằng dấu phẩy). IP ngoài danh sách không thấy lựa chọn VNeID, không thấy menu "Chứng thư số", trang `/vneid` báo 404 và mọi API VNeID trả `403 VNEID_ACCESS_DENIED` (webhook CSign không bị ảnh hưởng). Bỏ trống thì ai cũng dùng được. **Bắt buộc** kèm `TRUSTED_IP_HEADER=x-real-ip`: thiếu, hoặc có mục sai định dạng, thì VNeID đóng với mọi IP (log `[vneid:access]`).
+
+`VNEID_DAILY_CAP` (mặc định 5000): số yêu cầu ký đã gửi tới CSign, và số lần lấy chứng thư, tối đa mỗi 24 giờ cho toàn hệ thống (mỗi loại). Bộ đếm lấy chứng thư nằm trong bộ nhớ, về 0 khi khởi động lại.
+
 `.env` đã nằm trong `.gitignore` — không bao giờ commit file này. (Root CA tin cậy không còn cấu hình qua env nữa — đã bundle sẵn trong `lib/trustStore/roots/`, xem README ở đó nếu cần thêm root mới.)
 
 ## 4. Cài dependency + build

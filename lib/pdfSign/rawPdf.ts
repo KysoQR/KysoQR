@@ -1,6 +1,6 @@
 import { inflateSync } from 'node:zlib';
 import { PdfSignError } from './errors.ts';
-import { MAX_OBJSTM_INFLATED_BYTES } from './limits.ts';
+import { MAX_BYTE_RANGES, MAX_OBJSTM_INFLATED_BYTES } from './limits.ts';
 
 /**
  * Byte-level helpers that run BEFORE pdf-lib touches an untrusted file.
@@ -103,31 +103,89 @@ function escapedName(name: string): string {
     .join('');
 }
 
-const OBJSTM_TYPE = new RegExp(
-  `\\/${escapedName('Type')}[\\0\\t\\n\\f\\r ]*\\/${escapedName('ObjStm')}`,
+// Bounded repeats only: a /Contents placeholder is tens of thousands of '0',
+// and `\d+` over it would backtrack in quadratic time.
+const WS = '[\\0\\t\\n\\f\\r ]{1,64}';
+const REF = `\\d{1,10}${WS}\\d{1,5}${WS}R`;
+const OBJ_HEADER = new RegExp(`(?<![0-9])\\d{1,10}${WS}\\d{1,5}${WS}obj(?![A-Za-z])`, 'g');
+/** The `stream` keyword (not the end of `endstream`), followed by its EOL. */
+const STREAM_KEYWORD = /(?<!end)stream(?=\r\n|\n|\r)/g;
+const MAX_DICT_CHARS = 64 * 1024;
+/** Every /Type value of a dictionary: a name or an indirect reference. */
+const TYPE_VALUES = new RegExp(
+  `\\/${escapedName('Type')}[\\0\\t\\n\\f\\r ]{0,64}(\\/[^\\0\\t\\n\\f\\r /<>\\[\\]()%]{1,127}|${REF})`,
   'gi'
 );
+const FILTER_VALUE = new RegExp(
+  `\\/${escapedName('Filter')}[\\0\\t\\n\\f\\r ]{0,64}(\\[[^\\]]{0,1024}\\]|\\/[^\\0\\t\\n\\f\\r /<>\\[\\]()%]{1,127}|${REF})`,
+  'i'
+);
+const TYPE_KEY = new RegExp(`\\/${escapedName('Type')}(?![A-Za-z0-9#])`, 'gi');
+const FILTER_KEY = new RegExp(`\\/${escapedName('Filter')}(?![A-Za-z0-9#])`, 'i');
+const decodeName = (name: string) =>
+  name.replace(/#([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+
+/** Streams pdf-lib inflates while loading: object and xref streams. A /Type it
+ * cannot read here (indirect) counts as one, so it is checked too. */
+function inflatedOnLoad(dict: string): boolean {
+  let read = 0;
+  for (const match of dict.matchAll(TYPE_VALUES)) {
+    read += 1;
+    const value = match[1]!;
+    if (!value.startsWith('/')) return true;
+    const typeName = decodeName(value.slice(1));
+    if (typeName === 'ObjStm' || typeName === 'XRef') return true;
+  }
+  // A /Type whose value could not be read here: assume the worst.
+  return (dict.match(TYPE_KEY) ?? []).length > read;
+}
 
 /**
- * pdf-lib inflates every object stream when it loads a file and has no output
- * cap, so a few KB of zlib can ask for gigabytes. Inflate each one here with a
- * hard cap first; anything over it is refused before pdf-lib sees the file.
- * (The runner's memory watchdog is the backstop for what this cannot see.)
+ * pdf-lib inflates every object stream and xref stream when it loads a file
+ * and has no output cap, so a few KB of zlib can ask for gigabytes. Inflate
+ * each one here with a hard cap first; anything over it is refused before
+ * pdf-lib sees the file. Every `N G obj` with a stream is looked at, comments
+ * are dropped from its dictionary, and a /Type or /Filter given by reference
+ * is treated as the worst case. (The runner's memory watchdog is the backstop
+ * for what this cannot see.)
  */
 export function assertNoObjectStreamBomb(pdf: Buffer): void {
   const text = pdf.toString('latin1');
   let total = 0;
-  for (const match of text.matchAll(OBJSTM_TYPE)) {
-    const typeAt = match.index;
-    const objAt = text.lastIndexOf(' obj', typeAt);
-    const streamAt = text.indexOf('stream', typeAt);
-    if (objAt < 0 || streamAt < 0 || text[streamAt - 1] === 'd') continue;
+  // Where each `N G obj` ends, in file order: a stream's dictionary starts at
+  // the last one before it (one pass, then a binary search per stream).
+  const headerEnds = Array.from(text.matchAll(OBJ_HEADER), (m) => m.index + m[0].length);
+  for (const keyword of text.matchAll(STREAM_KEYWORD)) {
+    const streamAt = keyword.index;
+    let low = 0;
+    let high = headerEnds.length - 1;
+    let objEnd = -1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (headerEnds[mid]! <= streamAt) {
+        objEnd = headerEnds[mid]!;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    if (objEnd < 0) continue;
 
-    const dict = text.slice(objAt, streamAt);
+    // A dictionary is small; a longer stretch (padding, or a `stream` inside
+    // another stream's data) is read in part and checked as the worst case.
+    const long = streamAt - objEnd > MAX_DICT_CHARS;
+    const dict = text
+      .slice(long ? streamAt - MAX_DICT_CHARS : objEnd, streamAt)
+      .replace(/%[^\r\n]*/g, ' ');
+    if (!long && !inflatedOnLoad(dict)) continue;
     // pdf-lib decodes whatever chain /Filter names; only a lone Flate is
-    // something this check can bound, so refuse every other chain.
-    const filter = /\/Filter[\0\t\n\f\r ]*(\[[^\]]*\]|\/[^\s/<>[\]()]+)/.exec(dict)?.[1];
-    if (filter !== undefined && !/^\/(?:FlateDecode|Fl)$/.test(filter)) {
+    // something this check can bound, so refuse every other chain (and a
+    // /Filter given by reference, which cannot be read here).
+    const filter = FILTER_VALUE.exec(dict)?.[1];
+    if (filter === undefined && FILTER_KEY.test(dict)) {
+      throw new PdfSignError('PDF_UNSUPPORTED', 'object stream has a /Filter that cannot be read');
+    }
+    if (filter !== undefined && !/^\/(?:FlateDecode|Fl)$/.test(decodeName(filter))) {
       throw new PdfSignError('PDF_UNSUPPORTED', 'object stream uses an unsupported filter chain');
     }
 
@@ -153,6 +211,23 @@ export function assertNoObjectStreamBomb(pdf: Buffer): void {
     }
     if (total > MAX_OBJSTM_INFLATED_BYTES * 2) {
       throw new PdfSignError('PDF_UNSUPPORTED', 'object streams inflate beyond the limit');
+    }
+  }
+}
+
+/**
+ * The signature check after signing (lib/verification, on the main thread)
+ * looks at every `/ByteRange` in the file, wherever it is, and its cost grows
+ * with their number times the file size. A real document has a handful;
+ * thousands hidden in a stream could stall the server, so such a file is
+ * refused here, before anything is sent to the signer's phone.
+ */
+export function assertFewByteRanges(pdf: Buffer): void {
+  let count = 0;
+  for (let at = pdf.indexOf('/ByteRange'); at >= 0; at = pdf.indexOf('/ByteRange', at + 10)) {
+    count += 1;
+    if (count > MAX_BYTE_RANGES) {
+      throw new PdfSignError('PDF_UNSUPPORTED', 'PDF carries too many /ByteRange entries');
     }
   }
 }

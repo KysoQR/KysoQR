@@ -11,6 +11,8 @@ export type VneidErrorCode =
   | 'VNEID_NOT_CONFIGURED'
   /** Request not sent by a page of this site (Origin check). */
   | 'VNEID_FORBIDDEN_ORIGIN'
+  /** The client IP is not in VNEID_TRUSTED_IPS. */
+  | 'VNEID_ACCESS_DENIED'
   /** Turnstile (anti-bot) token missing or refused. */
   | 'VNEID_CHALLENGE_FAILED'
   | 'VNEID_LENGTH_REQUIRED'
@@ -23,7 +25,7 @@ export type VneidErrorCode =
   | 'VNEID_REQUEST_PENDING'
   /** Too many unfinished requests for this citizen lately. */
   | 'VNEID_CITIZEN_LIMITED'
-  /** The service-wide daily cap of sign requests is reached. */
+  /** The service-wide daily cap (signing requests or certificate lookups) is reached. */
   | 'VNEID_DAILY_CAP'
   /** No usable certificate for this CCCD at CSign. */
   | 'VNEID_NO_CERTIFICATE'
@@ -33,8 +35,7 @@ export type VneidErrorCode =
   | 'VNEID_REGISTRATION_INVALID'
   /** This citizen already has a registration (or a request) waiting. */
   | 'VNEID_REGISTRATION_PENDING'
-  /** Too many registrations for this citizen lately. */
-  | 'VNEID_REGISTRATION_LIMITED'
+
   /** The citizen already has this provider's free certificate. */
   | 'VNEID_ALREADY_REGISTERED'
   /** The provider or its service pack is unknown or disabled at CSign. */
@@ -59,6 +60,7 @@ export type VneidErrorCode =
 const HTTP_STATUS: Record<VneidErrorCode, number> = {
   VNEID_NOT_CONFIGURED: 503,
   VNEID_FORBIDDEN_ORIGIN: 403,
+  VNEID_ACCESS_DENIED: 403,
   VNEID_CHALLENGE_FAILED: 403,
   VNEID_LENGTH_REQUIRED: 411,
   VNEID_PAYLOAD_TOO_LARGE: 413,
@@ -72,7 +74,7 @@ const HTTP_STATUS: Record<VneidErrorCode, number> = {
   VNEID_CERT_INVALID: 422,
   VNEID_REGISTRATION_INVALID: 400,
   VNEID_REGISTRATION_PENDING: 409,
-  VNEID_REGISTRATION_LIMITED: 429,
+
   VNEID_ALREADY_REGISTERED: 409,
   VNEID_PROVIDER_UNAVAILABLE: 422,
 

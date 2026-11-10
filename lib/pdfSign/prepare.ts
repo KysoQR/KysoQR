@@ -9,6 +9,7 @@ import {
   PDFRef,
   PDFString,
   type PDFContext,
+  type PDFImage,
   type PDFObject,
 } from 'pdf-lib';
 import {
@@ -17,10 +18,11 @@ import {
   loadPdfForSigning,
   type PdfAnalysis,
 } from './analyze.ts';
-import { type AppearanceContent, createAppearance } from './appearance.ts';
+import { type AppearanceContent, type AppearanceFonts, createAppearance } from './appearance.ts';
 import { buildSignedAttributes, estimateCmsSize } from './cms.ts';
 import { PdfSignError } from './errors.ts';
-import { loadAppearanceFonts } from './fonts.ts';
+import { assertFewByteRanges } from './rawPdf.ts';
+import { loadAppearanceFonts, loadAppearanceImages } from './fonts.ts';
 import {
   appearanceMatrix,
   type FieldPlacement,
@@ -156,7 +158,9 @@ function validateInput(input: PrepareInput, pageCount: number): AppearanceConten
     .slice(0, MAX_DETAIL_LINES)
     .map((line) => sanitizeDisplayText(line, MAX_DETAIL_CHARS))
     .filter(Boolean);
-  return { name, details };
+  const logoCaption = sanitizeDisplayText(input.appearance.logoCaption ?? '', MAX_DETAIL_CHARS);
+  const note = sanitizeDisplayText(input.appearance.note ?? '', MAX_DETAIL_CHARS);
+  return { name, details, ...(logoCaption ? { logoCaption } : {}), ...(note ? { note } : {}) };
 }
 
 /** Fully qualified name of every node of the form's field tree. */
@@ -225,6 +229,8 @@ function addAnnotation(
 
 export async function preparePdf(input: PrepareInput): Promise<PrepareResult> {
   const original = input.pdf;
+  // Not in loadPdfForSigning: finalize reloads the signed file, one more.
+  assertFewByteRanges(original);
   const { doc, analysis, baselineObjectNumber } = await loadPdfForSigning(original);
   assertSignable(analysis);
   const pageCount = analysis.pageCount;
@@ -255,7 +261,15 @@ export async function preparePdf(input: PrepareInput): Promise<PrepareResult> {
 
   doc.registerFontkit(fontkit);
   const fontBytes = loadAppearanceFonts();
-  const fonts = { regular: await doc.embedFont(fontBytes.regular, { subset: true }) };
+  const fonts: AppearanceFonts = {
+    regular: await doc.embedFont(fontBytes.regular, { subset: true }),
+  };
+  // VNeID's look: the name in semibold and VNeID's logo, embedded once for every box.
+  let logo: PDFImage | undefined;
+  if (content.logoCaption) {
+    fonts.bold = await doc.embedFont(fontBytes.semibold, { subset: true });
+    logo = await doc.embedPng(loadAppearanceImages().vneidLogo);
+  }
 
   // --- one signature field; one widget per box ---------------------------------
   // A single box: the field and its widget are the same dictionary. Several
@@ -288,7 +302,8 @@ export async function preparePdf(input: PrepareInput): Promise<PrepareResult> {
       box.width,
       box.height,
       content,
-      appearanceMatrix(pageGeom.rotation)
+      appearanceMatrix(pageGeom.rotation),
+      logo?.ref
     );
     const widget = context.register(
       context.obj({
@@ -313,6 +328,8 @@ export async function preparePdf(input: PrepareInput): Promise<PrepareResult> {
   const formField = parentRef ?? widgets[0]!;
   // Glyphs are subset at embed time, so only after every encodeText().
   await fonts.regular.embed();
+  await fonts.bold?.embed();
+  await logo?.embed();
 
   // --- catalog /AcroForm: append to /Fields, keep everything else ------------------
   const catalog = context.lookup(rootRef, PDFDict);

@@ -171,4 +171,25 @@ describe('prepare -> remote signature -> finalize', () => {
       expect(await statuses(signed, identity)).toEqual(['SIGNED_VALID']);
     }
   });
+
+  it("draws VNeID's look with the logo embedded once for every box, and signs again over it", async () => {
+    const appearance = {
+      name: 'Nguyễn Văn A',
+      details: ['Ngày ký: 09/10/2026', 'Giờ ký: 10:42:17 (+07:00)'],
+      logoCaption: 'Ký bằng VNeID',
+      note: 'Ký bằng kysoqr.com',
+    };
+    const original = await createSamplePdf();
+    const { signed: once } = await signOnce(original, identity, {
+      appearance,
+      fields: [BOX, { ...BOX, page: 2 }],
+    });
+    // The logo and its alpha mask, once for both boxes.
+    const tail = once.subarray(original.length).toString('latin1');
+    expect(tail.match(/\/Subtype \/Image/g)).toHaveLength(2);
+    expect(tail).toContain('/Im1');
+
+    const { signed: twice } = await signOnce(once, identity, { appearance });
+    expect(await statuses(twice, identity)).toEqual(['SIGNED_VALID', 'SIGNED_VALID']);
+  });
 });

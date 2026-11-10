@@ -190,6 +190,17 @@ describe('VneidStore', () => {
     expect(store.countRequestsSince(T0 - 1)).toBe(0);
   });
 
+  it('leaves requests that failed before sign-hash out of the daily count', () => {
+    const sent = newRow();
+    submit(store, sent);
+    store.markEnded(sent.id, 'FAILED', { errorCode: 'errorcode4007' }, T0);
+    const notSent = newRow({ citizenKey: 'citizen-b' });
+    expect(store.reserve(notSent, AUDIT, TTL)).toBe('reserved');
+    expect(store.countRequestsSince(T0 - 1)).toBe(2);
+    store.markEnded(notSent.id, 'FAILED', { errorCode: 'NO_CERT' }, T0);
+    expect(store.countRequestsSince(T0 - 1)).toBe(1);
+  });
+
   it('counts refused and ignored requests per citizen, not successful ones', () => {
     const refused = newRow();
     submit(store, refused);

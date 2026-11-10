@@ -23,12 +23,16 @@ export interface VneidConfig {
    * without it signing still works (query-status), the webhook route is off. */
   webhook: { organizationId: string; secrets: string[] } | undefined;
   dbPath: string;
+  /** Sign requests that reach CSign, and certificate lookups, per 24 hours (each). */
   dailyCap: number;
   auditDays: number;
   requireCode: boolean;
   /** RFC 3161 timestamp authorities, asked in this order; empty = signatures
    * carry no timestamp. */
   tsaUrls: string[];
+  /** false (VNEID_QUERY_STATUS=off): CSign is never asked with query-status,
+   * results arrive by webhook only. For checking the webhook. */
+  queryStatus: boolean;
 }
 
 export class VneidConfigError extends Error {
@@ -45,7 +49,7 @@ export const DEFAULT_DB_PATH = './.data/vneid.sqlite';
 /** Public, free, trusted by Adobe Reader; any RFC 3161 TSA can replace it. */
 export const DEFAULT_TSA_URL = 'http://timestamp.digicert.com';
 /** Asked when the first TSA fails; also public, free and trusted by Adobe. */
-export const DEFAULT_TSA_FALLBACK_URL = 'http://timestamp.sectigo.com';
+export const DEFAULT_TSA_FALLBACK_URL = 'https://timestamp.sectigo.com';
 
 /** `KEY=` in a .env file arrives as an empty string: treat it as unset. */
 const blankToUndefined = (value: unknown) =>
@@ -69,7 +73,8 @@ function optionalInt(min: number, max: number, fallback: number) {
   );
 }
 
-/** TSAs commonly answer on plain http: the token is signed, so that is safe. */
+/** TSAs commonly answer on plain http: the token is signed, and lib/vneid/tsa.ts
+ * accepts it only from a time-stamping certificate that chains to a trusted root. */
 function isTsaUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -131,6 +136,10 @@ const schema = z
     ),
     TSA_URL: tsaSetting(DEFAULT_TSA_URL),
     TSA_FALLBACK_URL: tsaSetting(DEFAULT_TSA_FALLBACK_URL),
+    VNEID_QUERY_STATUS: z.preprocess(
+      blankToUndefined,
+      z.enum(['on', 'off'], { message: 'must be on or off' }).default('on')
+    ),
 
     CSIGN_ORGANIZATION_ID: optionalText,
     CSIGN_WEBHOOK_SECRET: optionalText,
@@ -142,7 +151,12 @@ const schema = z
       message: 'set both CSIGN_ORGANIZATION_ID and CSIGN_WEBHOOK_SECRET, or neither',
       path: ['CSIGN_WEBHOOK_SECRET'],
     }
-  );
+  )
+  .refine((env) => env.VNEID_QUERY_STATUS === 'on' || env.CSIGN_WEBHOOK_SECRET !== undefined, {
+    message:
+      'is off but CSIGN_ORGANIZATION_ID / CSIGN_WEBHOOK_SECRET are not set: results only come by webhook',
+    path: ['VNEID_QUERY_STATUS'],
+  });
 
 export function parseVneidConfig(env: Record<string, string | undefined>): VneidConfig {
   const parsed = schema.safeParse({
@@ -155,6 +169,7 @@ export function parseVneidConfig(env: Record<string, string | undefined>): Vneid
     VNEID_REQUIRE_CODE: env.VNEID_REQUIRE_CODE,
     TSA_URL: env.TSA_URL,
     TSA_FALLBACK_URL: env.TSA_FALLBACK_URL,
+    VNEID_QUERY_STATUS: env.VNEID_QUERY_STATUS,
 
     CSIGN_ORGANIZATION_ID: env.CSIGN_ORGANIZATION_ID,
     CSIGN_WEBHOOK_SECRET: env.CSIGN_WEBHOOK_SECRET,
@@ -188,6 +203,7 @@ export function parseVneidConfig(env: Record<string, string | undefined>): Vneid
       data.TSA_URL === 'off'
         ? []
         : [...new Set([data.TSA_URL, data.TSA_FALLBACK_URL])].filter((url) => url !== 'off'),
+    queryStatus: data.VNEID_QUERY_STATUS === 'on',
   };
 }
 

@@ -85,6 +85,10 @@ type SignaturePlacementProps = {
   /** Small line under "Chữ ký #n" saying where the signer approves
    * (defaults to the Cas ID wording). */
   fieldSubLabel?: string;
+  /** Page and zoom to open the file on, read once when mounted: the wizard
+   * passes what was on screen when it left this step, so coming back to the
+   * same file (from the QR / VNeID step) lands where the user was. */
+  initialView?: { page: number; zoom: number };
 };
 
 export type SignaturePlacementHandle = {
@@ -116,10 +120,10 @@ function SignaturePlacementInner(
     onCanAddFieldChange,
     topInset = 0,
     fieldSubLabel,
+    initialView,
   }: SignaturePlacementProps,
   ref: React.Ref<SignaturePlacementHandle>
 ) {
-  const { t } = useTranslation();
   const stageRef = useRef<HTMLDivElement | null>(null);
   const pdfRef = useRef<PDFDocumentProxy | null>(null);
   const canvasRefs = useRef(new Map<number, HTMLCanvasElement>());
@@ -131,8 +135,10 @@ function SignaturePlacementInner(
   const suppressClickUntilRef = useRef(0);
   const endGestureRef = useRef<(() => void) | null>(null);
   const zoomFactorRef = useRef(0.8);
+  // Only the first load of this mount restores the view; another file starts fresh.
+  const initialViewRef = useRef(initialView);
+  const pendingPageRef = useRef<number | null>(null);
 
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [pageAspect, setPageAspect] = useState<Record<number, number>>({});
@@ -249,7 +255,9 @@ function SignaturePlacementInner(
   useEffect(() => {
     let cancelled = false;
     const loadPdf = async () => {
-      setLoading(true);
+      const restore = initialViewRef.current;
+      initialViewRef.current = undefined;
+      pendingPageRef.current = restore && restore.page > 1 ? restore.page : null;
       setError(null);
       setPageCount(null);
       setPageAspect({});
@@ -257,7 +265,7 @@ function SignaturePlacementInner(
       setVisiblePage(1);
       setSelectedIndex(null);
       setIsPlacingNew(false);
-      setZoomFactor(0.8);
+      setZoomFactor(restore ? clamp(restore.zoom, ZOOM_MIN, ZOOM_MAX) : 0.8);
       canvasRefs.current.clear();
       overlayRefs.current.clear();
       pageWrapperRefs.current.clear();
@@ -290,8 +298,6 @@ function SignaturePlacementInner(
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Unable to read PDF preview');
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     };
     loadPdf();
@@ -579,7 +585,7 @@ function SignaturePlacementInner(
   useEffect(() => () => endGestureRef.current?.(), []);
 
   const scrollToPage = useCallback(
-    (pageNumber: number) => {
+    (pageNumber: number, behavior: ScrollBehavior = 'smooth') => {
       if (!pageCount) return;
       const safe = clamp(Math.trunc(pageNumber), 1, pageCount);
       const el = pageWrapperRefs.current.get(safe);
@@ -588,10 +594,22 @@ function SignaturePlacementInner(
       // the sticky header/toolbar instead of underneath it, and the stage's
       // own horizontal scroll position is left alone.
       const top = el.getBoundingClientRect().top + window.scrollY - topInset - 8;
-      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      window.scrollTo({ top: Math.max(0, top), behavior });
     },
     [pageCount, topInset]
   );
+
+  // Back to the page the user was on (initialView), once every page's
+  // wrapper has its height -- before that the page's offset is not final.
+  useEffect(() => {
+    if (pendingPageRef.current === null || !pageCount || !Object.keys(pageAspect).length) return;
+    const frame = requestAnimationFrame(() => {
+      const page = pendingPageRef.current;
+      pendingPageRef.current = null;
+      if (page !== null) scrollToPage(page, 'auto');
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pageAspect, pageCount, scrollToPage]);
 
   const zoomOut = useCallback(() => {
     setZoomFactor((z) => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100));
@@ -650,32 +668,11 @@ function SignaturePlacementInner(
   );
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-        <span className={isPlacingNew && !loading ? 'font-medium text-primary-strong' : 'italic'}>
-          {loading
-            ? t('sign.renderingPreview')
-            : isPlacingNew
-              ? t('sign.placingNewFieldHint')
-              : t('sign.clickOrDrag')}
-        </span>
-        {fields.length === 0 && (
-          <span className="text-text-muted">{t('sign.addFirstFieldHint')}</span>
-        )}
-      </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+    <div className="flex flex-1 flex-col">
+      {error && <p className="bg-red-950/80 px-4 py-1.5 text-xs text-red-300">{error}</p>}
       <div
         ref={stageRef}
-        // Dark background (was white) -- makes each white PDF page's own
-        // edges/boundaries visually obvious against the surrounding stage,
-        // especially once zoomed in and there's real empty space around/
-        // between pages (matches the convention most PDF viewers use). No
-        // longer scroll-contained -- grows to its natural height and scrolls
-        // along with the page (see SigningWizard.tsx's single page scroll).
-        // `overflow-x-auto`: zoomed past 100% a page is wider than the stage;
-        // scroll it sideways here instead of letting it spill over the
-        // signer column next to it (it used to, from ~150% zoom up).
-        className="relative mx-auto w-full max-w-none space-y-4 overflow-x-auto rounded-md border border-gray-700 bg-neutral-900 p-2"
+        className="relative mx-auto min-h-[calc(100svh-6.5rem)] w-full max-w-none flex-1 space-y-4 overflow-x-auto bg-[#525659] px-6 py-2"
       >
         {pageNumbers.map((pageNumber) => (
           <PdfPageBlock

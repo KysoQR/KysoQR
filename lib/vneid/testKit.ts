@@ -207,6 +207,7 @@ export function testConfig(overrides: Partial<VneidConfig> = {}): VneidConfig {
     auditDays: 90,
     requireCode: false,
     tsaUrls: [],
+    queryStatus: true,
 
     ...overrides,
   };

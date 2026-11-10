@@ -10,8 +10,9 @@ const buckets = new Map<string, Bucket>();
 
 /** Upper bound on tracked keys. A bucket idle for a whole window has refilled
  * completely, so it is equivalent to no bucket and gets swept; if the table is
- * STILL full of active buckets, a new key is refused (fail-closed) rather than
- * evicting a bucket someone is being limited by. */
+ * STILL full of active buckets, the least recently used one is dropped. Refusing
+ * every new key instead would let anyone who fills the table (with many
+ * addresses) lock every new client out of every route. */
 const MAX_BUCKETS = 50_000;
 /** Sweep idle buckets after this many new keys, so the map cannot grow without bound. */
 const SWEEP_EVERY_NEW_KEYS = 1_000;
@@ -47,12 +48,15 @@ export function checkRateLimit(key: string, options: RateLimitOptions): RateLimi
     if (buckets.size >= MAX_BUCKETS) {
       sweepIdleBuckets(now);
       if (buckets.size >= MAX_BUCKETS) {
-        // Every slot belongs to a key that is being limited right now.
-        const msPerToken = options.windowMs / options.limit;
-        return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(msPerToken / 1000)) };
+        // Every slot is active: drop the least recently used (Map order).
+        const oldest = buckets.keys().next().value;
+        if (oldest !== undefined) buckets.delete(oldest);
       }
     }
     bucket = { tokens: options.limit, lastRefillAt: now, windowMs: options.windowMs };
+  } else {
+    // Move to the end of the Map: the order is least recently used first.
+    buckets.delete(key);
   }
   bucket.windowMs = options.windowMs;
 
@@ -77,7 +81,14 @@ export function checkRateLimit(key: string, options: RateLimitOptions): RateLimi
 export function rateLimitedResponse(retryAfterSeconds: number): Response {
   return Response.json(
     { error: 'RATE_LIMITED', message: 'Too many requests' },
-    { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+    {
+      status: 429,
+      headers: {
+        'Retry-After': String(retryAfterSeconds),
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    }
   );
 }
 
@@ -178,16 +189,45 @@ export function normalizeClientIp(raw: string | null | undefined): string | unde
  * malformed value falls into the shared `unknown` bucket.
  */
 export function clientIpFromRequest(request: Request): string {
+  return normalizeClientIp(clientIpHeaderValue(request.headers)) ?? 'unknown';
+}
+
+/** The header value the client IP is read from, by the rules above. */
+function clientIpHeaderValue(headers: Pick<Headers, 'get'>): string | undefined {
   const trustedHeader = process.env.TRUSTED_IP_HEADER?.trim().toLowerCase();
-  if (trustedHeader) {
-    const value = request.headers.get(trustedHeader);
-    return normalizeClientIp(value?.split(',').at(-1)) ?? 'unknown';
+  if (trustedHeader) return headers.get(trustedHeader)?.split(',').at(-1);
+
+  const cfConnectingIp = headers.get('cf-connecting-ip');
+  if (cfConnectingIp) return cfConnectingIp;
+
+  const forwardedFor = headers.get('x-forwarded-for');
+  if (forwardedFor) return forwardedFor.split(',').at(-1);
+  return undefined;
+}
+
+/**
+ * An IP address as bytes: 4 for IPv4 (an IPv4-mapped IPv6 address included),
+ * 16 for IPv6. Undefined when `raw` is not an IP address. A port, or the
+ * brackets around an IPv6 address, are dropped.
+ */
+export function parseIpAddress(raw: string | null | undefined): Uint8Array | undefined {
+  let text = (raw ?? '').trim();
+  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(text);
+  if (bracketed) text = bracketed[1]!;
+  else if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(text)) text = text.slice(0, text.lastIndexOf(':'));
+
+  const v4 = parseIpv4(text);
+  if (v4) return Uint8Array.from(v4);
+  const v6 = parseIpv6(text);
+  if (!v6) return undefined;
+  if (v6.slice(0, 5).every((group) => group === 0) && v6[5] === 0xffff) {
+    return Uint8Array.from([v6[6]! >> 8, v6[6]! & 255, v6[7]! >> 8, v6[7]! & 255]);
   }
+  return Uint8Array.from(v6.flatMap((group) => [group >> 8, group & 255]));
+}
 
-  const cfConnectingIp = request.headers.get('cf-connecting-ip');
-  if (cfConnectingIp) return normalizeClientIp(cfConnectingIp) ?? 'unknown';
-
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  if (forwardedFor) return normalizeClientIp(forwardedFor.split(',').at(-1)) ?? 'unknown';
-  return 'unknown';
+/** The client's own address (not its /64), read by the same rules as
+ * clientIpFromRequest; undefined when there is none. */
+export function clientAddressFromHeaders(headers: Pick<Headers, 'get'>): Uint8Array | undefined {
+  return parseIpAddress(clientIpHeaderValue(headers));
 }

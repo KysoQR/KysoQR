@@ -1,4 +1,5 @@
 import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
+import { vneidAccessDenied } from '@/lib/vneid/access';
 import { VneidError } from '@/lib/vneid/errors';
 import {
   bearerSecret,
@@ -11,14 +12,16 @@ import {
   readBody,
   requireContentType,
   toIsoTime,
+  perSecondLimit,
 } from '@/lib/vneid/http';
-import { getStatus, getVneidDeps, isTransactionId } from '@/lib/vneid/service';
+import { authenticate, getStatus, getVneidDeps, isTransactionId } from '@/lib/vneid/service';
 
 export const runtime = 'nodejs';
 
 const MAX_BODY_BYTES = 2048;
 
 const ERRORS = documentedErrors([
+  { error: 'VNEID_ACCESS_DENIED' },
   { error: 'VNEID_FORBIDDEN_ORIGIN' },
   { error: 'VNEID_UNSUPPORTED_MEDIA_TYPE' },
   { error: 'VNEID_LENGTH_REQUIRED' },
@@ -38,6 +41,11 @@ const ERRORS = documentedErrors([
  * Never returns the signature or anything personal.
  */
 export async function POST(request: Request): Promise<Response> {
+  // Only clients in VNEID_TRUSTED_IPS (when set) may use VNeID at all.
+  const denied = vneidAccessDenied(request);
+  if (denied) return denied;
+  const tooFast = perSecondLimit('status', clientIpFromRequest(request));
+  if (tooFast) return tooFast;
   const rateLimit = checkRateLimit(`vneid-status:${clientIpFromRequest(request)}`, {
     limit: 120,
     windowMs: 60_000,
@@ -64,13 +72,17 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     // One misbehaving tab must not use up the whole IP budget of an office.
+    // Counted only for a real transaction and its secret: an id anyone can
+    // make up would fill the shared rate-limit table.
+    const clientSecret = bearerSecret(request);
+    authenticate(deps, transactionId, clientSecret);
     const perTransaction = checkRateLimit(`vneid-status-tx:${transactionId}`, {
       limit: 30,
       windowMs: 60_000,
     });
     if (!perTransaction.allowed) return rateLimitedResponse(perTransaction.retryAfterSeconds);
 
-    const view = await getStatus(deps, { transactionId, clientSecret: bearerSecret(request) });
+    const view = await getStatus(deps, { transactionId, clientSecret });
     return jsonResponse({
       status: view.status,
       ...(view.reason ? { reason: view.reason } : {}),

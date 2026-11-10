@@ -66,11 +66,13 @@ function RevocationLine({
     );
   }
 
+  const url = <span className="break-all text-text-secondary">[{result.url}]</span>;
+
   if (result.status === 'unavailable') {
     return (
       <div>
         <span className="text-text-muted">{label}: </span>
-        {t('signatureHistory.chain.revocation.unavailableWithUrl')} [{result.url}]
+        {t('signatureHistory.chain.revocation.unavailableWithUrl')} {url}
       </div>
     );
   }
@@ -78,14 +80,20 @@ function RevocationLine({
   return (
     <div>
       <span className="text-text-muted">{label}: </span>
-      <span className={result.status === 'revoked' ? 'font-medium text-red-600' : undefined}>
+      <span
+        className={
+          result.status === 'revoked'
+            ? 'font-semibold text-red-600'
+            : 'font-medium text-primary-strong'
+        }
+      >
         {t(
           result.status === 'revoked'
             ? 'signatureHistory.chain.revocation.revoked'
             : 'signatureHistory.chain.revocation.notRevoked'
         )}
       </span>{' '}
-      [{result.url}]
+      {url}
     </div>
   );
 }
@@ -112,17 +120,17 @@ function CertificateChainDetail({ chain }: { chain: ChainCertInfo[] }) {
       {displayedChain.map((cert) => (
         <div
           key={cert.index}
-          className="rounded-lg border border-border-subtle bg-white p-2.5 text-xs"
+          className="rounded-lg border border-border-subtle bg-surface-soft p-2.5 text-xs"
         >
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <span className="font-semibold text-text-main">
               {cert.isCa ? t('signatureHistory.chain.ca') : t('signatureHistory.chain.leaf')}
             </span>
-            <span className="rounded-full bg-surface-soft px-2 py-0.5 text-[10px] font-medium text-text-secondary">
+            <span className="rounded-full border border-border-subtle px-2 py-0.5 text-[10px] font-medium text-text-secondary">
               #{cert.index}
             </span>
           </div>
-          <div className="space-y-1 text-text-secondary">
+          <div className="space-y-1 text-text-main">
             <div>
               <span className="text-text-muted">{t('verify.subject')}: </span>
               <span className="break-all">{cert.subject}</span>
