@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isRegistrationOpen,
   nextRegistrationPollDelay,
-  REGISTRATION_FAST_POLL_MS,
-  REGISTRATION_SLOW_POLL_MS,
+  REGISTRATION_POLL_MS,
   ERROR_POLL_MS,
   FAST_POLL_MS,
   isEndStatus,
@@ -55,17 +54,10 @@ describe('status helpers', () => {
 });
 
 describe('nextRegistrationPollDelay', () => {
-  const createdAt = 1_000_000;
-  it('asks fast for half an hour, then slowly, never sooner than Retry-After', () => {
-    expect(nextRegistrationPollDelay({ now: createdAt + 60_000, createdAt })).toBe(
-      REGISTRATION_FAST_POLL_MS
-    );
-    expect(nextRegistrationPollDelay({ now: createdAt + 31 * 60_000, createdAt })).toBe(
-      REGISTRATION_SLOW_POLL_MS
-    );
-    expect(
-      nextRegistrationPollDelay({ now: createdAt + 1000, createdAt, retryAfterSeconds: 20 })
-    ).toBe(20_000);
+  it('asks every few seconds, never sooner than Retry-After', () => {
+    expect(nextRegistrationPollDelay()).toBe(REGISTRATION_POLL_MS);
+    expect(nextRegistrationPollDelay(1)).toBe(REGISTRATION_POLL_MS);
+    expect(nextRegistrationPollDelay(20)).toBe(20_000);
   });
 
   it('keeps asking only while the registration is open', () => {

@@ -16,8 +16,9 @@ import {
  * registration under the CCCD, so typing the CCCD again and calling refresh()
  * picks it up where it was. While it is open (PENDING / ISSUED) the hook asks
  * again on the pace of polling.ts, hidden page or not, and calls onCompleted
- * once with the new certificate's credentialId. Answers for a CCCD that is no
- * longer the one on screen are dropped.
+ * once with the new certificate's credentialId. It leaves the page at its
+ * expiresAt (30 minutes after it was sent), when the server deletes it.
+ * Answers for a CCCD that is no longer the one on screen are dropped.
  */
 export function useVneidRegistration(options: {
   citizenPid: string;
@@ -67,11 +68,7 @@ export function useVneidRegistration(options: {
     if (!registration || !isRegistrationOpen(registration.status)) return;
     let cancelled = false;
     const pid = citizenPid;
-    const delay = nextRegistrationPollDelay({
-      now: Date.now(),
-      createdAt: Date.parse(registration.createdAt),
-      retryAfterSeconds: retryAfter.current,
-    });
+    const delay = nextRegistrationPollDelay(retryAfter.current);
     const timer = window.setTimeout(async () => {
       try {
         const next = await fetchVneidRegistration(pid, language);
@@ -92,6 +89,17 @@ export function useVneidRegistration(options: {
       window.clearTimeout(timer);
     };
   }, [registration, citizenPid, language, rearm]);
+
+  // A registration lives until expiresAt (30 minutes after it was sent); the
+  // server deletes it then, so it leaves the page too, finished or not.
+  useEffect(() => {
+    if (!registration) return;
+    const timer = window.setTimeout(
+      () => setRegistration(null),
+      Math.max(0, Date.parse(registration.expiresAt) - Date.now())
+    );
+    return () => window.clearTimeout(timer);
+  }, [registration]);
 
   useEffect(() => {
     const serial = registration?.status === 'COMPLETED' ? registration.serialNumber : undefined;

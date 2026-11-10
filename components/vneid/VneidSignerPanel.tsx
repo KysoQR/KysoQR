@@ -74,8 +74,9 @@ function markRegistrationSeen(key: string) {
  * sign. A certificate under the CSign UAT test root is marked as such.
  *
  * A CCCD without a certificate is offered to register one
- * (VneidRegisterModal). The registration's status is kept by the server per
- * CCCD, so "Get certificates" also asks for it: after a reload it shows up
+ * (VneidRegisterModal); one that has certificates can still register another
+ * (the link under "Get certificates", or the certificate picker). The
+ * registration's status is kept by the server per CCCD, so "Get certificates" also asks for it: after a reload it shows up
  * again, and once it completes the new certificate is fetched and picked.
  */
 export function VneidSignerPanel({
@@ -376,6 +377,7 @@ export function VneidSignerPanel({
           citizenPid={value.citizenPid}
           language={language}
           skipIntro={registerSkipIntro}
+          hasCertificates={credentials !== null && credentials.length > 0}
           onClose={() => setShowRegister(false)}
           onRegistered={(started) => {
             trackRegistration(started);

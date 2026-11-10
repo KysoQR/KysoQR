@@ -38,12 +38,15 @@ export function VneidRegisterModal({
   citizenPid,
   language,
   skipIntro = false,
+  hasCertificates = false,
   onClose,
   onRegistered,
 }: {
   citizenPid: string;
   language: VneidLanguage;
   skipIntro?: boolean;
+  /** The CCCD already has certificates: the intro says "register another". */
+  hasCertificates?: boolean;
   onClose: () => void;
   onRegistered: (registration: VneidRegistration) => void;
 }) {
@@ -142,9 +145,18 @@ export function VneidRegisterModal({
 
   if (step === 'intro') {
     return (
-      <VneidModal title={t('vneid.register.titles.intro')} onClose={close}>
+      <VneidModal
+        title={t(
+          hasCertificates ? 'vneid.register.titles.introMore' : 'vneid.register.titles.intro'
+        )}
+        onClose={close}
+      >
         <div>
-          <NoCertificateNotice text={t('vneid.register.introText')} />
+          {hasCertificates ? (
+            <Notice tone="info">{t('vneid.register.introTextMore')}</Notice>
+          ) : (
+            <NoCertificateNotice text={t('vneid.register.introText')} />
+          )}
           <ol className="mt-4 list-decimal space-y-1 pl-5 text-xs text-text-secondary">
             <li>{t('vneid.register.introStep1')}</li>
             <li>{t('vneid.register.introStep2')}</li>

@@ -595,11 +595,13 @@
       "stepOf": "Step {{step}} of 3",
       "titles": {
         "intro": "Register a certificate",
+        "introMore": "Register another certificate",
         "provider": "Choose a certificate provider",
         "pack": "Choose a certificate pack",
         "form": "Registration details"
       },
       "introText": "You can register a new one right here to sign with VNeID.",
+      "introTextMore": "This CCCD already has a VNeID signing certificate. You can still register another one.",
       "introStep1": "Choose a provider and a certificate pack.",
       "introStep2": "Fill in the registration details and send them.",
       "introStep3": "Open the VNeID app: agree to share your details, then activate the certificate once it is issued.",

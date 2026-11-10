@@ -592,11 +592,13 @@
       "stepOf": "Bước {{step}}/3",
       "titles": {
         "intro": "Đăng ký chứng thư số",
+        "introMore": "Đăng ký thêm chứng thư số",
         "provider": "Chọn nhà cung cấp chứng thư",
         "pack": "Chọn gói chứng thư",
         "form": "Thông tin đăng ký"
       },
       "introText": "Bạn có thể đăng ký chứng thư mới ngay tại đây để ký bằng VNeID.",
+      "introTextMore": "Số CCCD này đã có chứng thư ký số qua VNeID. Bạn vẫn có thể đăng ký thêm một chứng thư mới.",
       "introStep1": "Chọn nhà cung cấp và gói chứng thư.",
       "introStep2": "Điền thông tin đăng ký rồi gửi.",
       "introStep3": "Mở ứng dụng VNeID: đồng ý chia sẻ thông tin, rồi kích hoạt chứng thư khi được cấp.",
