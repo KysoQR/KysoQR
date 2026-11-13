@@ -10,7 +10,6 @@
 | `cas-id.png` | Chủ dự án cung cấp | Wordmark CAS ID |
 | `usb-token.png` | Chủ dự án cung cấp | Cắt viền, 192×192 |
 | `vneid.svg` | https://vneid.gov.vn (`app-icon`) | Ảnh tạm |
-| `vneid-signature.png` | Dựng từ `vneid.svg` bằng `sharp` (256×256, nền trong suốt) | Ảnh tạm. Được **nhúng vào hình chữ ký VNeID** trong PDF (`lib/pdfSign/fonts.ts`): PDF đã ký giữ nguyên logo này mãi, nên phải thay bằng logo được phép trước production. Thay file là đủ, giữ tên |
 | `providers/intrustca.png` | https://cdn.bankhub.vn/img/intrust-cert-logo.png | Chủ dự án cung cấp link, thu nhỏ còn 480px |
 | `providers/cascert-cmc.png` | https://cdn.bankhub.vn/img/cas-cert-logo.png | Chủ dự án cung cấp link ("CAS CERT by CMC CA") |
 | `providers/hilo.png` | https://cdn.bankhub.vn/img/hilo-logo.png | Chủ dự án cung cấp link, thu nhỏ còn 480px |

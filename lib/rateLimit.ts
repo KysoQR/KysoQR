@@ -204,30 +204,3 @@ function clientIpHeaderValue(headers: Pick<Headers, 'get'>): string | undefined 
   if (forwardedFor) return forwardedFor.split(',').at(-1);
   return undefined;
 }
-
-/**
- * An IP address as bytes: 4 for IPv4 (an IPv4-mapped IPv6 address included),
- * 16 for IPv6. Undefined when `raw` is not an IP address. A port, or the
- * brackets around an IPv6 address, are dropped.
- */
-export function parseIpAddress(raw: string | null | undefined): Uint8Array | undefined {
-  let text = (raw ?? '').trim();
-  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(text);
-  if (bracketed) text = bracketed[1]!;
-  else if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(text)) text = text.slice(0, text.lastIndexOf(':'));
-
-  const v4 = parseIpv4(text);
-  if (v4) return Uint8Array.from(v4);
-  const v6 = parseIpv6(text);
-  if (!v6) return undefined;
-  if (v6.slice(0, 5).every((group) => group === 0) && v6[5] === 0xffff) {
-    return Uint8Array.from([v6[6]! >> 8, v6[6]! & 255, v6[7]! >> 8, v6[7]! & 255]);
-  }
-  return Uint8Array.from(v6.flatMap((group) => [group >> 8, group & 255]));
-}
-
-/** The client's own address (not its /64), read by the same rules as
- * clientIpFromRequest; undefined when there is none. */
-export function clientAddressFromHeaders(headers: Pick<Headers, 'get'>): Uint8Array | undefined {
-  return parseIpAddress(clientIpHeaderValue(headers));
-}

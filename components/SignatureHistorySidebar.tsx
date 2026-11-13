@@ -1,19 +1,9 @@
 'use client';
 
-import type { CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import { VerificationResultCard } from '@/components/VerificationResultCard';
 import type { VerificationResult } from '@/lib/verification/verifyPdfSignatures';
-
-const DARK_SIDEBAR_VARS: CSSProperties = {
-  '--color-text-main': '#f3f4f6',
-  '--color-text-secondary': '#d1d5db',
-  '--color-text-muted': '#9ca3af',
-  '--color-primary-strong': '#34d399',
-  '--color-border-subtle': '#3f4448',
-  '--color-surface-soft': '#24282c',
-} as CSSProperties;
 
 /**
  * Ported from x-sign-web/src/components/signing/SignatureHistorySidebar.tsx,
@@ -56,36 +46,27 @@ export function SignatureHistorySidebar({ onClose, signatures }: SignatureHistor
   if (signatures.length === 0) return null;
 
   return (
-    <div
-      style={DARK_SIDEBAR_VARS}
-      className="min-h-full border-r border-[#33373b] bg-[#222528] p-4 text-gray-100"
-    >
-      <div className="mb-3 flex items-start justify-between border-b border-[#33373b] pb-3">
-        <div>
-          <h3 className="text-sm font-bold text-white">
-            {t('verify.title')}
-          </h3>
-          <p className="mt-0.5 text-xs text-gray-400">
-            {t('signatureHistory.subtitle', { count: signatures.length })}
-          </p>
-        </div>
+    <div className="rounded-2xl border border-border-subtle bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between pb-3">
+        <p className="text-xs font-semibold text-text-main">
+          {t('signatureHistory.subtitle', { count: signatures.length })}
+        </p>
         <button
           type="button"
           onClick={onClose}
           aria-label={t('signatureHistory.closeAriaLabel')}
-          className="rounded-full p-1 text-gray-400 hover:bg-[#33373b] hover:text-white"
+          className="rounded-full p-1 text-text-secondary hover:bg-surface-soft hover:text-text-main"
         >
           <Icon icon="lucide:x" className="h-4 w-4" />
         </button>
       </div>
-      <div className="space-y-3">
+      {/* Each entry used to be its own bordered, rounded box -- stacked with
+          6+ signatures, that's a lot of separate outlines in a narrow
+          column. `divide-y` gives a single thin separator between entries
+          instead, inside this one outer card. */}
+      <div className="divide-y divide-border-subtle border-t border-border-subtle">
         {signatures.map((sig, index) => (
-          <div
-            key={index}
-            className="rounded-xl border border-[#3e4348] bg-[#2d3135] px-3.5 py-0.5"
-          >
-            <VerificationResultCard result={sig} index={index} />
-          </div>
+          <VerificationResultCard key={index} result={sig} index={index} />
         ))}
       </div>
     </div>

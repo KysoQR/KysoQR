@@ -7,12 +7,9 @@ import { useTranslation } from 'react-i18next';
 export function ExpiresIn({
   expiresAt,
   onExpired,
-  messageKey = 'scan.expiresIn',
 }: {
   expiresAt: string | null;
   onExpired?: () => void;
-  /** i18n key of the sentence, given `{{time}}` (m:ss). */
-  messageKey?: string;
 }) {
   const { t } = useTranslation();
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
@@ -55,5 +52,7 @@ export function ExpiresIn({
   const seconds = totalSeconds % 60;
   const timeLabel = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
-  return <span className="text-xs text-text-muted">{t(messageKey, { time: timeLabel })}</span>;
+  return (
+    <span className="text-xs text-text-muted">{t('scan.expiresIn', { time: timeLabel })}</span>
+  );
 }

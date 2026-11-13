@@ -49,8 +49,6 @@
 
   --color-page-bg-from: #f7fff9;
   --color-page-bg-to: #ecf7ef;
-  /* Flat page background of the signing wizard and the VNeID pages. */
-  --color-page-bg: #f5fbf7;
 
   --color-error-bg: #fef2f2;
   --color-error-border: #fee2e2;
@@ -58,8 +56,6 @@
   --color-warning-bg: #fffbeb;
   --color-warning-border: #fef3c7;
   --color-warning-text: #92400e;
-  /* Dots and icons that mark "waiting" / a warning. */
-  --color-warning-strong: #d97706;
 }
 
 html,
