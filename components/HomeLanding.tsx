@@ -8,7 +8,6 @@ import Header from './Header';
 import Footer from './Footer';
 import { SIGNING_METHODS_SECTION_ID, SigningMethodsSection } from './home/SigningMethodsSection';
 import { ScrollCue } from './ScrollCue';
-import { CassoBrandBand } from './home/CassoBrandBand';
 import { CasIdVideoGuide } from './signing/CasIdVideoGuide';
 import { LANDING_GUIDE_VIDEO_EMBED_URL } from '@/lib/branding/signingMethods';
 import { ButtonSpinner } from './signing/Spinners';
@@ -272,7 +271,6 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
           <CasIdVideoGuide className="" videoUrl={LANDING_GUIDE_VIDEO_EMBED_URL} />
         </div>
       </div>
-      <CassoBrandBand />
 
       <Footer />
     </div>
