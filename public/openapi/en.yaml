@@ -27,8 +27,8 @@ info:
     - **Authentication:** none. Every route is public. No CORS headers, so browsers can only call from the same origin; other servers can call directly.
     - **Error body:** `{ error, message, detail? }` (schema `ApiError`). Branch on `error`, not on `message`.
       `detail` only appears on `502` errors from routes that call CAS; it's absent when the error didn't come from CAS and wasn't a timeout.
-    - **Per-IP rate limits** (sign/request 20, sign/status 60, sign/download 20, verify/upload 20, verify/signing-round 30 requests / 60 seconds).
-      Exceeding one → `429 RATE_LIMITED` with a `Retry-After` header. The IP comes from `CF-Connecting-IP`, otherwise the last entry of `X-Forwarded-For`.
+    - **Per-IP rate limits** (sign/request 20, sign/status 60, sign/download 20, verify/upload 20, verify/signing-round 10 requests / 60 seconds and 60 requests / hour).
+      Exceeding one → `429 RATE_LIMITED` with a `Retry-After` header. With `TRUSTED_IP_HEADER` set (VPS behind nginx: `x-real-ip`) the IP is read from that header only; otherwise from `CF-Connecting-IP`, then the last entry of `X-Forwarded-For`.
       Counters live in each server process's memory. Not the same as `429 CAS_RATE_LIMITED` (CAS limiting KysoQR's account, no `Retry-After`).
     - **Missing CAS configuration:** the 4 routes that call CAS return `500 CAS_NOT_CONFIGURED` if the server lacks `CAS_ESIGN_BASE_URL`, `CAS_ESIGN_CLIENT_ID` or `CAS_ESIGN_API_KEY`. `POST /api/verify/upload` doesn't need them.
 
@@ -511,7 +511,10 @@ paths:
         Looks up CAS's record of a signing round by its `orgIdSigned` code. This is a **lookup of data CAS stored**, not
         cryptographic verification; to verify the signatures in a file, use `POST /api/verify/upload`.
 
-        The fields inside `signingRound` come from CAS and are passed through as-is.
+        The code is printed on the PDF, so anyone holding the file can look it up: the response holds only the fields listed
+        in the schema (allow-list), a citizen ID is masked to its last 4 digits (a `MST:` tax code is kept), and `device` keeps
+        only `model`. A code of the wrong shape (must be `<prefix>#<code>`, e.g. `kysoqr.com#3bLzsA`) returns
+        `signingRound: null` without calling CAS.
 
         Source: `app/api/verify/signing-round/[orgIdSigned]/route.ts`, `lib/cas/CasProvider.ts` (`SigningRoundDetail`).
       parameters:
@@ -536,13 +539,13 @@ paths:
                   summary: Found (illustrative values; real content comes from CAS)
                   value:
                     signingRound:
-                      device: {}
+                      device: { model: 'iPhone12,1' }
                       signer: { displayName: NGUYEN VAN A }
                       authMethod: Cas ID
                       signedAt: '2026-09-29T03:15:42.000Z'
                       certificate:
                         issuer: { commonName: CA Example, organization: Example CA, country: VN }
-                        signer: { commonName: NGUYEN VAN A, country: VN, taxOrCitizenId: 'CCCD:001099012345' }
+                        signer: { commonName: NGUYEN VAN A, country: VN, taxOrCitizenId: 'CCCD:********2345' }
                         documentIntegrity: Not modified
                         validFrom: '2026-01-01T00:00:00.000Z'
                         validTo: '2027-01-01T00:00:00.000Z'
@@ -876,8 +879,11 @@ components:
       properties:
         device:
           type: object
-          additionalProperties: true
-          description: Signing device info. CAS hasn't documented its structure; treat as arbitrary key–value pairs.
+          properties:
+            model:
+              type: string
+              description: Signing device model. May be absent.
+          description: Signing device; only `model` is kept, every other field CAS returns is dropped.
         signer:
           type: object
           required: [displayName]
@@ -929,4 +935,4 @@ components:
           type: [string, 'null']
         taxOrCitizenId:
           type: [string, 'null']
-          description: 'Tax code or national ID; may carry a `CCCD:`/`MST:` prefix. May be absent.'
+          description: 'Tax code or national ID, may carry a `CCCD:`/`MST:` prefix. A citizen ID is masked to its last 4 digits (e.g. `CCCD:********2345`); a tax code is kept. May be absent.'

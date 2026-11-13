@@ -33,7 +33,7 @@ function createCert(
   issuerAttrs: forge.pki.CertificateField[],
   publicKey: forge.pki.rsa.PublicKey,
   signingKey: forge.pki.rsa.PrivateKey,
-  options: { isCa: boolean }
+  options: { isCa: boolean; extraExtensions?: object[] }
 ): forge.pki.Certificate {
   const cert = forge.pki.createCertificate();
   cert.publicKey = publicKey;
@@ -47,6 +47,7 @@ function createCert(
   cert.setExtensions([
     { name: 'basicConstraints', cA: options.isCa },
     { name: 'keyUsage', keyCertSign: options.isCa, digitalSignature: true },
+    ...(options.extraExtensions ?? []),
   ]);
   cert.sign(signingKey, forge.md.sha256.create());
   return cert;
@@ -411,5 +412,115 @@ describe('certChainVerifier: dynamic AIA-based issuer discovery', () => {
     // Display chain sent to the client stays exactly as before (no AIA detail in it).
     expect(JSON.stringify(result?.chain)).not.toContain('ca.example.test');
     warn.mockRestore();
+  });
+});
+
+/** A certificatePolicies extension holding only anyPolicy. */
+function anyPolicyExtension(critical: boolean): object {
+  const { asn1 } = forge;
+  return {
+    name: 'certificatePolicies',
+    critical,
+    value: asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false, asn1.oidToDer('2.5.29.32.0').getBytes()),
+      ]),
+    ]),
+  };
+}
+
+describe('certChainVerifier: critical extensions (Vietnam national roots issued since 2025-11)', () => {
+  it('accepts a chain whose root and intermediate mark certificatePolicies / cRLDistributionPoints critical (VNPT SmartCA RS 2026 shape)', async () => {
+    const rootKeys = forge.pki.rsa.generateKeyPair(2048);
+    const rootCert = createCert(
+      'Test Root CA',
+      [{ name: 'commonName', value: 'Test Root CA' }],
+      rootKeys.publicKey,
+      rootKeys.privateKey,
+      {
+        isCa: true,
+        extraExtensions: [
+          anyPolicyExtension(true),
+          // On the root only: a root's own revocation is never checked, so
+          // this URL is never fetched.
+          {
+            name: 'cRLDistributionPoints',
+            critical: true,
+            altNames: [{ type: 6, value: 'http://crl.example.test/root.crl' }],
+          },
+        ],
+      }
+    );
+    const intermediateKeys = forge.pki.rsa.generateKeyPair(2048);
+    const intermediateCert = createCert(
+      'Test Intermediate CA',
+      rootCert.subject.attributes,
+      intermediateKeys.publicKey,
+      rootKeys.privateKey,
+      { isCa: true, extraExtensions: [anyPolicyExtension(true)] }
+    );
+    const leafKeys = forge.pki.rsa.generateKeyPair(2048);
+    const leafCert = createCert('Test Signer', intermediateCert.subject.attributes, leafKeys.publicKey, intermediateKeys.privateKey, {
+      isCa: false,
+    });
+
+    const rootPem = forge.pki.certificateToPem(rootCert);
+    const result = await verifyCertificateChainFromCmsBuffer(
+      buildDetachedCmsDer(leafCert, leafKeys.privateKey, [intermediateCert]),
+      { isConfigured: () => true, isTrustedRoot: (pem) => pem === rootPem, getTrustedRootPems: () => [rootPem] },
+      new Date('2026-01-01T00:00:00Z')
+    );
+
+    expect(result?.valid).toBe(true);
+    expect(result?.error).toBeUndefined();
+    expect(result?.criticalExtensions).toBeUndefined();
+    expect(result?.chain).toHaveLength(3);
+    expect(mockFetchCaIssuerCertificates).not.toHaveBeenCalled();
+  });
+
+  it('still rejects any other critical extension it does not understand, and names it in the log-only summary', async () => {
+    const rootKeys = forge.pki.rsa.generateKeyPair(2048);
+    const rootCert = createCert(
+      'Test Root CA',
+      [{ name: 'commonName', value: 'Test Root CA' }],
+      rootKeys.publicKey,
+      rootKeys.privateKey,
+      { isCa: true }
+    );
+    const intermediateKeys = forge.pki.rsa.generateKeyPair(2048);
+    const intermediateCert = createCert(
+      'Test Intermediate CA',
+      rootCert.subject.attributes,
+      intermediateKeys.publicKey,
+      rootKeys.privateKey,
+      {
+        isCa: true,
+        extraExtensions: [
+          {
+            id: '1.3.6.1.4.1.55555.1',
+            critical: true,
+            value: forge.asn1.create(forge.asn1.Class.UNIVERSAL, forge.asn1.Type.NULL, false, ''),
+          },
+        ],
+      }
+    );
+    const leafKeys = forge.pki.rsa.generateKeyPair(2048);
+    const leafCert = createCert('Test Signer', intermediateCert.subject.attributes, leafKeys.publicKey, intermediateKeys.privateKey, {
+      isCa: false,
+    });
+
+    const rootPem = forge.pki.certificateToPem(rootCert);
+    const result = await verifyCertificateChainFromCmsBuffer(
+      buildDetachedCmsDer(leafCert, leafKeys.privateKey, [intermediateCert]),
+      { isConfigured: () => true, isTrustedRoot: (pem) => pem === rootPem, getTrustedRootPems: () => [rootPem] },
+      new Date('2026-01-01T00:00:00Z')
+    );
+
+    expect(result?.valid).toBe(false);
+    expect(result?.rootNotInTrustStore).toBe(false);
+    expect(result?.error).toBe('Certificate has an unsupported critical extension.');
+    expect(result?.criticalExtensions).toEqual(['#0 (none)', '#1 1.3.6.1.4.1.55555.1', '#2 (none)']);
+    // Log-only: never part of the display chain sent to the client.
+    expect(JSON.stringify(result?.chain)).not.toContain('55555');
   });
 });

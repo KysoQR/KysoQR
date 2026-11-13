@@ -2,6 +2,7 @@ import { getCasProvider } from '@/lib/cas/getCasProvider';
 import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
 import { isTimeoutError } from '@/lib/fetchWithTimeout';
 import { casErrorDetail } from '@/lib/casErrorDetail';
+import { isLookupCode, signingRoundView } from '@/lib/signingRoundView';
 
 export const runtime = 'nodejs';
 
@@ -13,18 +14,40 @@ export const runtime = 'nodejs';
  * /api/verify/upload). `orgIdSigned` is opaque and may include a display
  * prefix (e.g. `kysoqr.com#3bLzsA`) — CAS only uses the part after `#` for
  * the actual lookup, so it's forwarded as-is, URL-encoded.
+ *
+ * Public by nature (the code is printed on the signed PDF), so: only codes of
+ * the right shape reach CAS, each IP gets a few lookups per minute and per
+ * hour (guessing codes needs many), and the answer is rebuilt by
+ * signingRoundView -- citizen ID masked to its last 4 digits, device reduced
+ * to its model, nothing CAS adds later passes through unchecked.
  */
+const NO_STORE = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ orgIdSigned: string }> }
 ): Promise<Response> {
   const { orgIdSigned } = await params;
 
-  const rateLimit = checkRateLimit(`verify-signing-round:${clientIpFromRequest(request)}`, {
-    limit: 30,
-    windowMs: 60_000,
-  });
-  if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);
+  const ip = clientIpFromRequest(request);
+  for (const [key, limit, windowMs] of [
+    [`verify-signing-round:${ip}`, 10, 60_000],
+    [`verify-signing-round-hour:${ip}`, 60, 60 * 60_000],
+  ] as const) {
+    const rateLimit = checkRateLimit(key, { limit, windowMs });
+    if (!rateLimit.allowed) return rateLimitedResponse(rateLimit.retryAfterSeconds);
+  }
+
+  // Next hands the segment over decoded; a still-encoded one (`%23`) is
+  // decoded once here. A malformed or bare code never reaches CAS.
+  let code = orgIdSigned;
+  if (!isLookupCode(code)) {
+    try {
+      code = decodeURIComponent(code);
+    } catch {
+      // not percent-encoding: checked as is below
+    }
+  }
+  if (!isLookupCode(code)) return Response.json({ signingRound: null }, { headers: NO_STORE });
 
   let casProvider;
   try {
@@ -47,13 +70,16 @@ export async function GET(
   }
 
   try {
-    const result = await casProvider.getSigningRound(orgIdSigned);
-    return Response.json(result);
+    const { signingRound } = await casProvider.getSigningRound(code);
+    return Response.json(
+      { signingRound: signingRound ? signingRoundView(signingRound) : null },
+      { headers: NO_STORE }
+    );
   } catch (error) {
     if (casProvider.isSigningRoundNotFoundError(error)) {
       // Not an error from the caller's point of view: the round simply isn't
       // completed yet (or the code is wrong) — same 200 shape as "not found".
-      return Response.json({ signingRound: null });
+      return Response.json({ signingRound: null }, { headers: NO_STORE });
     }
     if (casProvider.isRateLimitedError(error)) {
       return Response.json(

@@ -18,7 +18,7 @@ const VALID_AT_SIGNING = new Set(['Hợp lệ tại thời điểm ký', 'Valid 
 const HAS_TIMESTAMP = new Set(['Có', 'Yes']);
 
 /** CAS's own `taxOrCitizenId` value sometimes already comes prefixed with
- * "CCCD:"/"MST:" (e.g. "CCCD:066204000423") -- redundant once it's already
+ * "CCCD:"/"MST:" (e.g. "CCCD:123456789101") -- redundant once it's already
  * shown next to a "MST / CCCD" label, so it's stripped before display. */
 function stripIdPrefix(value: string): string {
   return value.replace(/^\s*(CCCD|MST)\s*:\s*/i, '');

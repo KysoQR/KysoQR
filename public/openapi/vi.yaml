@@ -27,8 +27,8 @@ info:
     - **Xác thực:** không có. Mọi route đều public. Không có header CORS, nên trình duyệt chỉ gọi được từ cùng origin; server khác gọi trực tiếp bình thường.
     - **Body lỗi:** `{ error, message, detail? }` (schema `ApiError`). Phân nhánh theo `error`, không theo `message`.
       `detail` chỉ có ở lỗi `502` từ route gọi CAS; vắng mặt khi lỗi không đến từ CAS và không phải timeout.
-    - **Rate limit theo IP** (sign/request 20, sign/status 60, sign/download 20, verify/upload 20, verify/signing-round 30 request / 60 giây).
-      Vượt giới hạn → `429 RATE_LIMITED` kèm header `Retry-After`. IP lấy từ `CF-Connecting-IP`, không có thì phần tử cuối của `X-Forwarded-For`.
+    - **Rate limit theo IP** (sign/request 20, sign/status 60, sign/download 20, verify/upload 20, verify/signing-round 10 request / 60 giây và 60 request / giờ).
+      Vượt giới hạn → `429 RATE_LIMITED` kèm header `Retry-After`. Có `TRUSTED_IP_HEADER` (VPS sau nginx: `x-real-ip`) thì IP chỉ lấy từ header đó; không có thì từ `CF-Connecting-IP`, rồi phần tử cuối của `X-Forwarded-For`.
       Bộ đếm nằm trong bộ nhớ từng tiến trình server. Khác với `429 CAS_RATE_LIMITED` (CAS giới hạn tài khoản KysoQR, không có `Retry-After`).
     - **Thiếu cấu hình CAS:** 4 route gọi CAS trả `500 CAS_NOT_CONFIGURED` nếu server thiếu `CAS_ESIGN_BASE_URL`, `CAS_ESIGN_CLIENT_ID` hoặc `CAS_ESIGN_API_KEY`. `POST /api/verify/upload` không cần các biến này.
 
@@ -511,7 +511,9 @@ paths:
         Tra cứu bản ghi của một phiên ký trên CAS theo mã `orgIdSigned`. Đây là **tra cứu dữ liệu CAS lưu lại**, không phải
         xác minh mật mã; muốn xác minh chữ ký trong file thì dùng `POST /api/verify/upload`.
 
-        Các trường trong `signingRound` do CAS trả và được chuyển tiếp nguyên trạng.
+        Mã in trên PDF nên ai cầm file cũng tra được: response chỉ gồm các trường liệt kê trong schema (lọc theo danh sách trắng),
+        số CCCD bị che chỉ còn 4 số cuối (mã số thuế `MST:` giữ nguyên), `device` chỉ còn `model`. Mã sai định dạng
+        (phải là `<tiền tố>#<mã>`, vd `kysoqr.com#3bLzsA`) trả `signingRound: null` mà không gọi CAS.
 
         Nguồn trong code: `app/api/verify/signing-round/[orgIdSigned]/route.ts`, `lib/cas/CasProvider.ts` (`SigningRoundDetail`).
       parameters:
@@ -536,13 +538,13 @@ paths:
                   summary: Tìm thấy (giá trị minh hoạ; nội dung thực do CAS trả)
                   value:
                     signingRound:
-                      device: {}
+                      device: { model: 'iPhone12,1' }
                       signer: { displayName: NGUYỄN VĂN A }
                       authMethod: Cas ID
                       signedAt: '2026-09-29T03:15:42.000Z'
                       certificate:
                         issuer: { commonName: CA Example, organization: Example CA, country: VN }
-                        signer: { commonName: NGUYỄN VĂN A, country: VN, taxOrCitizenId: 'CCCD:001099012345' }
+                        signer: { commonName: NGUYỄN VĂN A, country: VN, taxOrCitizenId: 'CCCD:********2345' }
                         documentIntegrity: Không bị thay đổi
                         validFrom: '2026-01-01T00:00:00.000Z'
                         validTo: '2027-01-01T00:00:00.000Z'
@@ -876,8 +878,11 @@ components:
       properties:
         device:
           type: object
-          additionalProperties: true
-          description: Thông tin thiết bị ký. CAS chưa công bố cấu trúc; coi là object key–value tuỳ ý.
+          properties:
+            model:
+              type: string
+              description: Model thiết bị ký. Có thể vắng mặt.
+          description: Thiết bị ký; chỉ giữ `model`, các trường khác CAS trả đều bị bỏ.
         signer:
           type: object
           required: [displayName]
@@ -929,4 +934,4 @@ components:
           type: [string, 'null']
         taxOrCitizenId:
           type: [string, 'null']
-          description: 'MST hoặc CCCD; có thể có tiền tố `CCCD:`/`MST:`. Có thể vắng mặt.'
+          description: 'MST hoặc CCCD, có thể có tiền tố `CCCD:`/`MST:`. CCCD bị che chỉ còn 4 số cuối (vd `CCCD:********2345`); MST giữ nguyên. Có thể vắng mặt.'
