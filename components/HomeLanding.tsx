@@ -9,6 +9,8 @@ import Footer from './Footer';
 import { SIGNING_METHODS_SECTION_ID, SigningMethodsSection } from './home/SigningMethodsSection';
 import { ScrollCue } from './ScrollCue';
 import { CassoBrandBand } from './home/CassoBrandBand';
+import { CasIdVideoGuide } from './signing/CasIdVideoGuide';
+import { LANDING_GUIDE_VIDEO_EMBED_URL } from '@/lib/branding/signingMethods';
 import { ButtonSpinner } from './signing/Spinners';
 import { MAX_SIGN_UPLOAD_SIZE_MB } from './signing/constants';
 import { getRecentSignatures, type RecentSignature } from '@/lib/recentSignatures';
@@ -265,6 +267,11 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
 
       <SigningMethodsSection />
       <ScrollCue targetId={SIGNING_METHODS_SECTION_ID} label={t('scrollCue.landing')} />
+      <div className="bg-[#F5FBF7]">
+        <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+          <CasIdVideoGuide className="" videoUrl={LANDING_GUIDE_VIDEO_EMBED_URL} />
+        </div>
+      </div>
       <CassoBrandBand />
 
       <Footer />

@@ -39,6 +39,11 @@ export const CAS_ID_REGISTER_URL = 'https://cas.so/cas-id/chu-ky-so/';
 export const CAS_ID_GUIDE_VIDEO_EMBED_URL =
   'https://www.youtube-nocookie.com/embed/OLVWXfumxoM?rel=0';
 
+/** The guide video shown on the landing page, below the signing methods
+ * (https://www.youtube.com/watch?v=rXRDglNGrGo). Same embed rules as above. */
+export const LANDING_GUIDE_VIDEO_EMBED_URL =
+  'https://www.youtube-nocookie.com/embed/rXRDglNGrGo?rel=0';
+
 export const SIGNING_METHODS: SigningMethod[] = [
   {
     key: 'casid',

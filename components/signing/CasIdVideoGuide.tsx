@@ -15,14 +15,22 @@ const POINT_KEYS = ['buttons', 'flow', 'mistakes'] as const;
  * who doesn't have CAS ID / a CAS CERT certificate yet, plus a link to the
  * free registration page.
  */
-export function CasIdVideoGuide() {
+export function CasIdVideoGuide({
+  className = 'mt-10',
+  videoUrl = CAS_ID_GUIDE_VIDEO_EMBED_URL,
+}: {
+  /** Spacing around the block; the landing page wraps it in its own band. */
+  className?: string;
+  /** Embed URL of the video; the landing page shows a different one. */
+  videoUrl?: string;
+} = {}) {
   const { t } = useTranslation();
 
   return (
     <section
       id={CAS_ID_VIDEO_GUIDE_ID}
       aria-labelledby="cas-id-video-guide-title"
-      className="mt-10 scroll-mt-28"
+      className={`${className} scroll-mt-28`}
     >
       <Reveal className="grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-14">
         <div className="flex flex-col items-start gap-5">
@@ -60,7 +68,7 @@ export function CasIdVideoGuide() {
 
         <div className="overflow-hidden rounded-[20px] bg-black shadow-xl shadow-primary/10 ring-1 ring-border-subtle">
           <iframe
-            src={CAS_ID_GUIDE_VIDEO_EMBED_URL}
+            src={videoUrl}
             title={t('scan.videoGuide.videoTitle')}
             loading="lazy"
             allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
