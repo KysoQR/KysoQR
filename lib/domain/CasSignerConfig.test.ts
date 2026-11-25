@@ -29,20 +29,20 @@ describe('CasSignerConfig.create', () => {
     );
   });
 
-  it.each(['0316794479', '0316794479-001'])('accepts enterprise tax code %s', (taxCode) => {
+  it.each(['0101010101', '0101010101-001'])('accepts enterprise tax code %s', (taxCode) => {
     expect(CasSignerConfig.create({ signerType: 'enterprise', taxCode }).taxCodeForSubmission()).toBe(
       taxCode
     );
   });
 
   describe('enterprise signer with the signing person\'s CCCD (so Cas ID sends a notification)', () => {
-    it.each(['077088002778', '079123456'])('keeps CCCD %s next to the tax code', (identificationNumber) => {
+    it.each(['010101010101', '079123456'])('keeps CCCD %s next to the tax code', (identificationNumber) => {
       const config = CasSignerConfig.create({
         signerType: 'enterprise',
-        taxCode: '0316794479',
+        taxCode: '0101010101',
         identificationNumber,
       });
-      expect(config.taxCodeForSubmission()).toBe('0316794479');
+      expect(config.taxCodeForSubmission()).toBe('0101010101');
       expect(config.identificationNumber).toBe(identificationNumber);
     });
 
@@ -50,12 +50,12 @@ describe('CasSignerConfig.create', () => {
       expect(
         CasSignerConfig.create({
           signerType: 'enterprise',
-          taxCode: '0316794479',
-          identificationNumber: ' 077088002778 ',
+          taxCode: '0101010101',
+          identificationNumber: ' 010101010101 ',
         }).identificationNumber
-      ).toBe('077088002778');
+      ).toBe('010101010101');
       expect(
-        CasSignerConfig.create({ signerType: 'enterprise', taxCode: '0316794479', identificationNumber: '  ' })
+        CasSignerConfig.create({ signerType: 'enterprise', taxCode: '0101010101', identificationNumber: '  ' })
           .identificationNumber
       ).toBeNull();
     });
@@ -64,7 +64,7 @@ describe('CasSignerConfig.create', () => {
       expect(() =>
         CasSignerConfig.create({
           signerType: 'enterprise',
-          taxCode: '0316794479',
+          taxCode: '0101010101',
           identificationNumber: '12345',
         })
       ).toThrow(/identificationNumber must be 9 or 12 digits/);

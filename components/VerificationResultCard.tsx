@@ -27,7 +27,7 @@ function formatValidity(from: string | undefined, to: string | undefined): strin
 }
 
 /** Best-effort "CN=" extraction from a formatted DN string (e.g.
- * "C=VN, O=..., CN=Nguyễn Đức Duy") for a friendlier "signed by" line. */
+ * "C=VN, O=..., CN=Nguyễn Văn A") for a friendlier "signed by" line. */
 function extractCommonName(dn: string | undefined): string | undefined {
   if (!dn) return undefined;
   const match = /(?:^|,\s*)CN=([^,]+)/.exec(dn);

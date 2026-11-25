@@ -65,7 +65,7 @@ export function SignerConfigPanel({
       label={t('signerConfig.cccdLabel')}
       value={value.identificationNumber}
       onChange={(next) => set('identificationNumber', next)}
-      placeholder="077088002778"
+      placeholder="123456789012"
       inputMode="numeric"
       disabled={disabled}
       error={cccdError}
@@ -135,7 +135,7 @@ export function SignerConfigPanel({
             label={t('signerConfig.taxCodeLabel')}
             value={value.taxCode}
             onChange={(next) => set('taxCode', next)}
-            placeholder="0316794479"
+            placeholder="1234567890"
             inputMode="numeric"
             disabled={disabled}
             error={taxCodeError}
