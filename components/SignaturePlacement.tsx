@@ -214,12 +214,27 @@ function SignaturePlacementInner(
     const context = canvas.getContext('2d');
     if (!context) return;
 
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    // Render the bitmap at the screen's real pixel density (Retina = 2x):
+    // a canvas sized only in CSS pixels gets upscaled by the browser and
+    // looks blurry. Layout (style size, pageMetrics, field positions) stays
+    // in CSS pixels. Capped so a high zoom on a dense screen never exceeds
+    // iOS Safari's ~16.7M-pixel canvas limit (which renders blank instead).
+    const MAX_CANVAS_PIXELS = 16_000_000;
+    const ratio = Math.min(
+      window.devicePixelRatio || 1,
+      Math.sqrt(MAX_CANVAS_PIXELS / (viewport.width * viewport.height))
+    );
+    canvas.width = Math.floor(viewport.width * ratio);
+    canvas.height = Math.floor(viewport.height * ratio);
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
-    context.clearRect(0, 0, viewport.width, viewport.height);
-    const renderTask = page.render({ canvas, canvasContext: context, viewport });
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    const renderTask = page.render({
+      canvas,
+      canvasContext: context,
+      viewport,
+      transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined,
+    });
     renderTasksRef.current.set(pageNumber, renderTask);
     try {
       await renderTask.promise;
