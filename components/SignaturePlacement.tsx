@@ -674,16 +674,16 @@ function SignaturePlacementInner(
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div
         ref={stageRef}
-        // Dark background (was white) -- makes each white PDF page's own
-        // edges/boundaries visually obvious against the surrounding stage,
-        // especially once zoomed in and there's real empty space around/
-        // between pages (matches the convention most PDF viewers use). No
+        // Light gray stage (was near-black, which felt heavy next to the
+        // light app UI) -- each white page gets a shadow + hairline ring
+        // (PdfPageBlock) so its edges stay obvious against the stage,
+        // especially once zoomed in, like light-mode PDF viewers do. No
         // longer scroll-contained -- grows to its natural height and scrolls
         // along with the page (see SigningWizard.tsx's single page scroll).
         // `overflow-x-auto`: zoomed past 100% a page is wider than the stage;
         // scroll it sideways here instead of letting it spill over the
         // signer column next to it (it used to, from ~150% zoom up).
-        className="relative mx-auto w-full max-w-none space-y-4 overflow-x-auto rounded-md border border-gray-700 bg-neutral-900 p-2"
+        className="relative mx-auto w-full max-w-none space-y-4 overflow-x-auto rounded-md border border-border-subtle bg-gray-100 p-3"
       >
         {pageNumbers.map((pageNumber) => (
           <PdfPageBlock
@@ -763,7 +763,7 @@ function PdfPageBlock({
     <div
       ref={(el) => registerWrapperRef(pageNumber, el)}
       data-page={pageNumber}
-      className="relative mx-auto w-full"
+      className="relative mx-auto w-full bg-white shadow-md ring-1 ring-black/5"
       style={{
         aspectRatio: aspect ? `1 / ${aspect}` : undefined,
         width: widthPx,
