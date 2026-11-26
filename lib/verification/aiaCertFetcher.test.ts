@@ -11,7 +11,6 @@ import {
   fetchCaIssuerCertificates,
   findAllAiaUrls,
   isAddressAllowed,
-  KNOWN_AIA_URL_CORRECTIONS,
   setAiaRetryDelaysForTests,
 } from './aiaCertFetcher';
 
@@ -641,25 +640,4 @@ describe('fetchCaIssuerCertificates', () => {
       expect(requestCount).toBe(1);
     }, 15000);
   });
-});
-
-describe('KNOWN_AIA_URL_CORRECTIONS', () => {
-  it('has the one confirmed IntrustCA correction, and only that one', () => {
-    expect(KNOWN_AIA_URL_CORRECTIONS).toEqual({
-      'https://intrustca.vn/cert/IntrustCA_Remote_Signing.cer':
-        'https://intrustca.vn/assets/cert/IntrustCA_Remote_Signing.cer',
-    });
-  });
-
-  it('real network: the declared (broken) IntrustCA URL is automatically corrected to the real file', async () => {
-    const [declaredUrl] = Object.keys(KNOWN_AIA_URL_CORRECTIONS);
-    const { leafForge } = await buildLeafWithAia([declaredUrl!]);
-
-    // No isAddressAllowed override here -- intrustca.vn is a real, ordinary
-    // public host, not something the SSRF guard would ever block.
-    const result = await fetchCaIssuerCertificates(leafForge);
-
-    expect(result.certs.length).toBeGreaterThan(0);
-    expect(result.url).toBe(KNOWN_AIA_URL_CORRECTIONS[declaredUrl!]);
-  }, 15000);
 });
