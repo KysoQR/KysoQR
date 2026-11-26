@@ -36,9 +36,11 @@ import { parseJsonSafely } from '@/lib/http';
 import {
   addRecentSignature,
   getRecentSignatures,
+  forgetIdentityKey,
   pendingCode,
   removeRecentSignature,
   replaceRecentSignature,
+  updateRecentSignature,
   type RecentSignature,
 } from '@/lib/recentSignatures';
 import { clearActiveSession, getActiveSession, setActiveSession } from '@/lib/activeSession';
@@ -47,11 +49,14 @@ import {
   signedFileName,
   triggerBlobDownload,
 } from '@/lib/downloadSignedPdf';
+import { getSignedPdf, saveSignedPdf } from '@/lib/signedPdfStore';
+import { pruneStoredPdfs } from '@/lib/browserHistory';
 import {
-  getSignedPdf,
-  pruneSignedPdfs,
-  saveSignedPdf,
-} from '@/lib/signedPdfStore';
+  SESSION_KEYS,
+  getSessionItem,
+  removeSessionItem,
+  setSessionItem,
+} from '@/lib/signingSessionStorage';
 import { lookupSigningRound } from '@/lib/signingRoundLookup';
 import type { SigningRoundDetail } from '@/lib/cas/CasProvider';
 import type { VerificationResult } from '@/lib/verification/verifyPdfSignatures';
@@ -92,18 +97,17 @@ const DISPLAY_STEP_KEYS = ['upload', 'place', 'sign', 'download'] as const;
  * panes stack and the page keeps a single ordinary scroll.
  */
 
+// This tab's round lives in sessionStorage (lib/signingSessionStorage.ts):
+// survives F5, not a new tab. `activeSession` is managed separately.
 const LS_KEYS = {
-  signRequestId: 'kysoqr.signRequestId',
-  status: 'kysoqr.status',
-  identityKey: 'kysoqr.identityKey',
-  identityKeyExpiresAt: 'kysoqr.identityKeyExpiresAt',
-  orgIdSigned: 'kysoqr.orgIdSigned',
-  documentName: 'kysoqr.documentName',
-  createdAt: 'kysoqr.createdAt',
-  // The QR/link CAS returned for the pending round -- persisted so a reload
-  // (F5) while waiting for the signer still shows the same QR, instead of a
-  // scan step with nothing to scan.
-  qrContent: 'kysoqr.qrContent',
+  signRequestId: SESSION_KEYS.signRequestId,
+  status: SESSION_KEYS.status,
+  identityKey: SESSION_KEYS.identityKey,
+  identityKeyExpiresAt: SESSION_KEYS.identityKeyExpiresAt,
+  orgIdSigned: SESSION_KEYS.orgIdSigned,
+  documentName: SESSION_KEYS.documentName,
+  createdAt: SESSION_KEYS.createdAt,
+  qrContent: SESSION_KEYS.qrContent,
 } as const;
 
 const TERMINAL_STATUSES = new Set(['SIGNED', 'REJECTED', 'FAILED', 'EXPIRED']);
@@ -123,11 +127,9 @@ function logSignatureProblems(signatures: VerificationResult[]) {
 }
 
 function clearPersistedSession() {
-  for (const key of Object.values(LS_KEYS)) window.localStorage.removeItem(key);
+  for (const key of Object.values(LS_KEYS)) removeSessionItem(key);
 }
 
-/** Drop stored PDFs no longer referenced by the home page's recent list or
- * by the session currently on screen (see lib/activeSession.ts). */
 /** Boxes read back from browser storage: anything malformed is dropped
  * (same checks the server applies), never trusted as-is. */
 function validStoredFields(fields: unknown): SignatureFieldProps[] {
@@ -140,13 +142,6 @@ function validStoredFields(fields: unknown): SignatureFieldProps[] {
       return false;
     }
   });
-}
-
-function pruneStoredPdfs() {
-  const keep = getRecentSignatures().map((entry) => entry.code);
-  const active = getActiveSession();
-  if (active) keep.push(active.code);
-  void pruneSignedPdfs(keep);
 }
 
 /** A round ended without a signature: it leaves the recent list (explicit
@@ -167,11 +162,11 @@ function rememberFailedRound(signRequestId: string | null, status: string, name:
  * after a reload, up until identityKey's own ~1-day CAS expiry (or until a
  * new round actually consumes it — see handleContinueSigning). */
 function clearRoundKeepPendingIdentity() {
-  window.localStorage.removeItem(LS_KEYS.signRequestId);
-  window.localStorage.removeItem(LS_KEYS.status);
-  window.localStorage.removeItem(LS_KEYS.orgIdSigned);
-  window.localStorage.removeItem(LS_KEYS.createdAt);
-  window.localStorage.removeItem(LS_KEYS.qrContent);
+  removeSessionItem(LS_KEYS.signRequestId);
+  removeSessionItem(LS_KEYS.status);
+  removeSessionItem(LS_KEYS.orgIdSigned);
+  removeSessionItem(LS_KEYS.createdAt);
+  removeSessionItem(LS_KEYS.qrContent);
 }
 
 /**
@@ -406,27 +401,27 @@ export function SigningWizard({
     total: steps.length,
   });
 
-  // Resume an IN-PROGRESS session from localStorage on mount. A terminal
+  // Resume an IN-PROGRESS session from this tab's sessionStorage on mount. A terminal
   // session is never resumed this way any more — it gets cleared the moment
   // it becomes terminal (see the polling effect below), so there is nothing
   // left to resume; reloading after that just starts fresh — EXCEPT a
   // still-unexpired identityKey from a just-finished SIGNED round, which is
   // kept specifically so "Tiếp tục ký"/"Tải lại" work even after a reload.
   useEffect(() => {
-    const savedId = window.localStorage.getItem(LS_KEYS.signRequestId);
-    const savedStatus = window.localStorage.getItem(LS_KEYS.status);
-    // Deliberate one-time resume from localStorage (browser-only) after mount
+    const savedId = getSessionItem(LS_KEYS.signRequestId);
+    const savedStatus = getSessionItem(LS_KEYS.status);
+    // Deliberate one-time resume from sessionStorage (browser-only) after mount
     // — a lazy useState initializer would run during SSR too and mismatch on
     // hydration, so a mount effect is the correct pattern here.
     if (savedId && savedStatus && !TERMINAL_STATUSES.has(savedStatus)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSignRequestId(savedId);
-      setQrContent(window.localStorage.getItem(LS_KEYS.qrContent));
+      setQrContent(getSessionItem(LS_KEYS.qrContent));
       setStep('scan');
       setQrDialogOpen(true);
       // The document itself (kept in IndexedDB at submit) so the locked
       // workspace behind the QR popup still shows it after a reload.
-      const savedName = window.localStorage.getItem(LS_KEYS.documentName) || 'document.pdf';
+      const savedName = getSessionItem(LS_KEYS.documentName) || 'document.pdf';
       // ...and the boxes that were sent, from the round's recent-list entry.
       setSignatureFields(
         validStoredFields(
@@ -470,8 +465,8 @@ export function SigningWizard({
       return;
     }
 
-    const savedIdentityKey = window.localStorage.getItem(LS_KEYS.identityKey);
-    const savedExpiresAt = window.localStorage.getItem(LS_KEYS.identityKeyExpiresAt);
+    const savedIdentityKey = getSessionItem(LS_KEYS.identityKey);
+    const savedExpiresAt = getSessionItem(LS_KEYS.identityKeyExpiresAt);
     // Deliberately does NOT auto-fetch the signed PDF here — that would spend
     // one of identityKey's ~5 CAS uses on every single reload. Only the
     // buttons show; a fetch happens only once the user actually clicks one.
@@ -652,11 +647,11 @@ export function SigningWizard({
         throw new Error(data.message ?? 'Gửi yêu cầu ký thất bại');
       }
 
-      window.localStorage.setItem(LS_KEYS.signRequestId, data.signRequestId);
-      window.localStorage.setItem(LS_KEYS.status, 'NEW');
-      window.localStorage.setItem(LS_KEYS.documentName, file.name);
-      window.localStorage.setItem(LS_KEYS.createdAt, new Date().toISOString());
-      window.localStorage.setItem(LS_KEYS.qrContent, data.qrContent);
+      setSessionItem(LS_KEYS.signRequestId, data.signRequestId);
+      setSessionItem(LS_KEYS.status, 'NEW');
+      setSessionItem(LS_KEYS.documentName, file.name);
+      setSessionItem(LS_KEYS.createdAt, new Date().toISOString());
+      setSessionItem(LS_KEYS.qrContent, data.qrContent);
 
       // Listed on the home page as "Đang chờ ký" right away, with its file
       // kept locally so the waiting screen survives a reload.
@@ -721,7 +716,14 @@ export function SigningWizard({
       // Keep a browser-local copy for the home page's recent list, so
       // reopening this round there doesn't spend another CAS download.
       if (code) {
-        void saveSignedPdf(code, blob).then(pruneStoredPdfs);
+        // Stored locally -> the download key is no longer needed; don't
+        // leave a bearer credential for the signed file lying around.
+        void saveSignedPdf(code, blob).then(() => {
+          forgetIdentityKey(code);
+          removeSessionItem(LS_KEYS.identityKey);
+          removeSessionItem(LS_KEYS.identityKeyExpiresAt);
+          return pruneStoredPdfs();
+        });
       }
       const url = URL.createObjectURL(blob);
       setSignedPdfUrl(url);
@@ -756,8 +758,16 @@ export function SigningWizard({
         }
         setStatusError(null);
         setStatus(data.status);
-        if (data.expiresIn)
-          setExpiresAt(new Date(Date.now() + data.expiresIn * 1000).toISOString());
+        if (data.expiresIn) {
+          const expiry = new Date(Date.now() + data.expiresIn * 1000).toISOString();
+          setExpiresAt(expiry);
+          // Once, so the home page can drop the "Đang chờ ký" chip by itself
+          // when the QR has expired.
+          const pending = getRecentSignatures().find((e) => e.code === pendingCode(signRequestId));
+          if (pending && !pending.expiresAt) {
+            updateRecentSignature(pending.code, { expiresAt: expiry });
+          }
+        }
 
         if (TERMINAL_STATUSES.has(data.status)) {
           if (data.status === 'SIGNED' && data.identityKey) {
@@ -767,9 +777,9 @@ export function SigningWizard({
             // requirement), but this lets "Tiếp tục ký"/"Tải lại" keep
             // working even after a reload (see the mount effect above).
             clearRoundKeepPendingIdentity();
-            window.localStorage.setItem(LS_KEYS.identityKey, data.identityKey);
+            setSessionItem(LS_KEYS.identityKey, data.identityKey);
             if (data.identityKeyExpiresAt) {
-              window.localStorage.setItem(LS_KEYS.identityKeyExpiresAt, data.identityKeyExpiresAt);
+              setSessionItem(LS_KEYS.identityKeyExpiresAt, data.identityKeyExpiresAt);
             }
             if (data.orgIdSigned) {
               setOrgIdSigned(data.orgIdSigned);
@@ -779,7 +789,7 @@ export function SigningWizard({
               replaceRecentSignature(pendingCode(signRequestId), {
                 code: data.orgIdSigned,
                 status: 'signed',
-                name: window.localStorage.getItem(LS_KEYS.documentName) || 'signed.pdf',
+                name: getSessionItem(LS_KEYS.documentName) || 'signed.pdf',
                 signedAt: new Date().toISOString(),
                 identityKey: data.identityKey,
                 identityKeyExpiresAt: data.identityKeyExpiresAt,
@@ -789,7 +799,7 @@ export function SigningWizard({
             // Nothing left to resume once terminal — clear right away so a
             // fresh signing session can start immediately (explicit product
             // requirement), independent of whether the user ever reloads.
-            const name = window.localStorage.getItem(LS_KEYS.documentName) || 'document.pdf';
+            const name = getSessionItem(LS_KEYS.documentName) || 'document.pdf';
             clearPersistedSession();
             rememberFailedRound(signRequestId, data.status, name);
             setFailedNoticeOpen(true);
@@ -803,7 +813,7 @@ export function SigningWizard({
             const signedEntry: RecentSignature = {
               code: data.orgIdSigned,
               status: 'signed',
-              name: window.localStorage.getItem(LS_KEYS.documentName) || 'signed.pdf',
+              name: getSessionItem(LS_KEYS.documentName) || 'signed.pdf',
               signedAt: new Date().toISOString(),
               identityKey: data.identityKey,
               identityKeyExpiresAt: data.identityKeyExpiresAt ?? undefined,
@@ -824,7 +834,7 @@ export function SigningWizard({
           }
           return;
         }
-        window.localStorage.setItem(LS_KEYS.status, data.status);
+        setSessionItem(LS_KEYS.status, data.status);
         timeoutId = setTimeout(poll, 4000);
       } catch (err) {
         if (!cancelled) {
@@ -874,7 +884,7 @@ export function SigningWizard({
    * it locally and go back to step 1, not truly cancel it on CAS's side.
    * Deliberately keeps `file`/`signatureFields`/`signerConfig` (unlike
    * `resetFlow`, which clears everything) so the user can fix the mistake
-   * without re-uploading. Must still clear localStorage (not just state) --
+   * without re-uploading. Must still clear the stored round (not just state) --
    * otherwise a reload right after going back would hit the mount-only
    * resume effect above and jump straight back into 'scan' with the very
    * request the user just walked away from. */
@@ -901,7 +911,7 @@ export function SigningWizard({
    * same result screen as a polled EXPIRED (leaving the scan step also stops
    * the polling). */
   const handleQrExpired = useCallback(() => {
-    const name = window.localStorage.getItem(LS_KEYS.documentName) || file?.name || 'document.pdf';
+    const name = getSessionItem(LS_KEYS.documentName) || file?.name || 'document.pdf';
     clearPersistedSession();
     rememberFailedRound(signRequestId, 'EXPIRED', name);
     setQrDialogOpen(false);
@@ -960,7 +970,7 @@ export function SigningWizard({
       if (!url) return;
       const a = document.createElement('a');
       a.href = url;
-      a.download = signedFileName(window.localStorage.getItem(LS_KEYS.documentName));
+      a.download = signedFileName(getSessionItem(LS_KEYS.documentName));
       a.click();
     },
     [signedPdfUrl]
@@ -975,7 +985,7 @@ export function SigningWizard({
       triggerDownload();
       return;
     }
-    const savedIdentityKey = window.localStorage.getItem(LS_KEYS.identityKey);
+    const savedIdentityKey = getSessionItem(LS_KEYS.identityKey);
     if (!savedIdentityKey) return;
     const fetched = await fetchSignedPdfOnce(savedIdentityKey, orgIdSigned);
     if (fetched) triggerDownload(fetched.url);
@@ -989,9 +999,9 @@ export function SigningWizard({
    * HomeLanding's initialFile hand-off — same mechanism). Deliberately keeps
    * signerConfig (a re-signer is usually the same person/entity). */
   const handleContinueSigning = useCallback(async () => {
-    const savedIdentityKey = window.localStorage.getItem(LS_KEYS.identityKey);
+    const savedIdentityKey = getSessionItem(LS_KEYS.identityKey);
     if (!savedIdentityKey) return;
-    const savedName = window.localStorage.getItem(LS_KEYS.documentName) || 'signed.pdf';
+    const savedName = getSessionItem(LS_KEYS.documentName) || 'signed.pdf';
 
     const blob = await downloadSignedPdfBlob(savedIdentityKey);
     if (!blob) return; // error already surfaced via signedPdfError

@@ -96,3 +96,8 @@ export async function pruneSignedPdfs(keepCodes: string[]): Promise<void> {
     };
   });
 }
+
+/** Deletes every stored PDF ("Xoá lịch sử trên máy này"). */
+export async function clearAllStoredPdfs(): Promise<void> {
+  await withStore('readwrite', (store) => store.clear());
+}

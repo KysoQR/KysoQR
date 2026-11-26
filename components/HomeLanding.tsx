@@ -13,12 +13,15 @@ import { LANDING_GUIDE_VIDEO_EMBED_URL } from '@/lib/branding/signingMethods';
 import { ButtonSpinner } from './signing/Spinners';
 import { MAX_SIGN_UPLOAD_SIZE_MB } from './signing/constants';
 import {
+  forgetIdentityKey,
   getRecentSignatures,
   isPendingSignature,
   type RecentSignature,
 } from '@/lib/recentSignatures';
 import { downloadSignedPdfBlob, signedFileName, triggerBlobDownload } from '@/lib/downloadSignedPdf';
 import { getSignedPdf, saveSignedPdf } from '@/lib/signedPdfStore';
+import { cleanupBrowserStorage, clearBrowserHistory } from '@/lib/browserHistory';
+import { SESSION_KEYS, removeSessionItem, setSessionItem } from '@/lib/signingSessionStorage';
 
 const SUPPORTED_FILE_FORMATS = ['PDF'];
 
@@ -43,7 +46,7 @@ export function HomeLanding({
 }: {
   onFileAccepted: (file: File) => void;
   onRecentOpened: (file: File, entry: RecentSignature) => void;
-  /** A "Đang chờ ký" entry was clicked: its round is primed in localStorage
+  /** A "Đang chờ ký" entry was clicked: its round is primed in sessionStorage
    * and the wizard resumes it (QR popup, polling, file from IndexedDB). */
   onResumePending: () => void;
 }) {
@@ -67,7 +70,19 @@ export function HomeLanding({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecentSignatures(getRecentSignatures());
+    // Housekeeping on every visit: drop entries past the 30-minute TTL, pending
+    // rounds whose QR expired, expired download keys, and PDFs nothing
+    // refers to any more (lib/browserHistory.ts).
+    void cleanupBrowserStorage().then(() => setRecentSignatures(getRecentSignatures()));
   }, []);
+  /** "Xoá lịch sử": first click asks, second one clears. */
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const handleClearHistory = async () => {
+    await clearBrowserHistory();
+    setConfirmingClear(false);
+    setRecentDownloadError(null);
+    setRecentSignatures([]);
+  };
   const [recentDownloadError, setRecentDownloadError] = useState<string | null>(null);
   const [downloadingCode, setDownloadingCode] = useState<string | null>(null);
   const [openingCode, setOpeningCode] = useState<string | null>(null);
@@ -89,15 +104,24 @@ export function HomeLanding({
     onFileAccepted(selected);
   };
 
+  /** The signed PDF of a recent round: the copy kept in this browser first
+   * (no CAS download spent), else via identityKey -- then kept locally and
+   * the key forgotten. Throws if neither is available. */
+  const loadSignedPdf = async (entry: RecentSignature): Promise<Blob> => {
+    const stored = await getSignedPdf(entry.code);
+    if (stored) return stored;
+    if (!entry.identityKey) throw new Error('no local copy and no download key');
+    const blob = await downloadSignedPdfBlob(entry.identityKey);
+    await saveSignedPdf(entry.code, blob);
+    forgetIdentityKey(entry.code);
+    return blob;
+  };
+
   const handleDownloadRecent = async (entry: RecentSignature) => {
-    if (!entry.identityKey) {
-      setRecentDownloadError(t('home.recentSignatures.downloadError'));
-      return;
-    }
     setDownloadingCode(entry.code);
     setRecentDownloadError(null);
     try {
-      const blob = await downloadSignedPdfBlob(entry.identityKey);
+      const blob = await loadSignedPdf(entry);
       triggerBlobDownload(blob, signedFileName(entry.name));
     } catch (err) {
       console.warn('[home] recent-signature download failed', err);
@@ -118,33 +142,23 @@ export function HomeLanding({
       if (!entry.signRequestId) return;
       // Same keys SigningWizard persists a waiting round under -- its mount
       // effect then resumes it exactly like after a reload.
-      try {
-        window.localStorage.setItem('kysoqr.signRequestId', entry.signRequestId);
-        window.localStorage.setItem('kysoqr.status', 'PENDING');
-        window.localStorage.setItem('kysoqr.documentName', entry.name);
-        if (entry.qrContent) window.localStorage.setItem('kysoqr.qrContent', entry.qrContent);
-        else window.localStorage.removeItem('kysoqr.qrContent');
-      } catch {
-        return;
-      }
+      setSessionItem(SESSION_KEYS.signRequestId, entry.signRequestId);
+      setSessionItem(SESSION_KEYS.status, 'PENDING');
+      setSessionItem(SESSION_KEYS.documentName, entry.name);
+      if (entry.qrContent) setSessionItem(SESSION_KEYS.qrContent, entry.qrContent);
+      else removeSessionItem(SESSION_KEYS.qrContent);
       onResumePending();
       return;
     }
     setOpeningCode(entry.code);
     setRecentDownloadError(null);
     try {
-      let blob = await getSignedPdf(entry.code);
-      const keyStillValid =
-        entry.identityKey &&
-        (!entry.identityKeyExpiresAt || new Date(entry.identityKeyExpiresAt).getTime() > Date.now());
-      if (!blob && keyStillValid) {
-        try {
-          blob = await downloadSignedPdfBlob(entry.identityKey!);
-          await saveSignedPdf(entry.code, blob);
-        } catch (err) {
-          console.warn('[home] recent-signature fetch failed', err);
-          blob = null;
-        }
+      // Expired keys are already dropped when the list is read.
+      let blob: Blob | null = null;
+      try {
+        blob = await loadSignedPdf(entry);
+      } catch (err) {
+        console.warn('[home] recent-signature fetch failed', err);
       }
       if (blob) {
         onRecentOpened(new File([blob], entry.name, { type: 'application/pdf' }), entry);
@@ -236,6 +250,43 @@ export function HomeLanding({
                 {recentDownloadError && (
                   <p className="mt-1.5 text-[11px] text-error-text">{recentDownloadError}</p>
                 )}
+                {/* Where these live, for how long, and a way to wipe them
+                    (shared computers) -- lib/browserHistory.ts. */}
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-[11px] text-text-muted">
+                  {confirmingClear ? (
+                    <>
+                      <span>{t('home.recentSignatures.clearConfirm')}</span>
+                      <button
+                        type="button"
+                        onClick={() => void handleClearHistory()}
+                        className="font-semibold text-error-text hover:underline"
+                      >
+                        {t('home.recentSignatures.clearConfirmYes')}
+                      </button>
+                      <span aria-hidden="true">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingClear(false)}
+                        className="hover:text-text-main hover:underline"
+                      >
+                        {t('home.recentSignatures.clearConfirmNo')}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Icon icon="lucide:hard-drive" className="h-3 w-3" />
+                      <span>{t('home.recentSignatures.storedNote')}</span>
+                      <span aria-hidden="true">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingClear(true)}
+                        className="font-medium text-text-secondary hover:text-error-text hover:underline"
+                      >
+                        {t('home.recentSignatures.clearHistory')}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </section>
