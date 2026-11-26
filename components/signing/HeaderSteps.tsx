@@ -11,13 +11,19 @@
  * Every label shows from `xl` up; between
  * `lg` and `xl` only the current one does (the others keep their circle,
  * with the name as tooltip) so four steps fit beside the toolbar.
+ * `allLabelsFrom="md"` shows every label from `md` up instead (the home
+ * page, which has the room).
  */
+const ALL_LABELS_CLASS = { md: 'hidden md:inline', xl: 'hidden xl:inline' } as const;
+
 export function HeaderSteps({
   steps,
   currentStepIndex,
+  allLabelsFrom = 'xl',
 }: {
   steps: readonly { key: string; label: string }[];
   currentStepIndex: number;
+  allLabelsFrom?: keyof typeof ALL_LABELS_CLASS;
 }) {
   return (
     <ol className="flex items-center">
@@ -49,7 +55,7 @@ export function HeaderSteps({
               className={`ml-1.5 whitespace-nowrap text-xs ${
                 isCurrent
                   ? 'font-bold text-primary-strong'
-                  : `hidden xl:inline ${isCompleted ? 'font-medium text-primary-strong' : 'font-medium text-text-muted'}`
+                  : `${ALL_LABELS_CLASS[allLabelsFrom]} ${isCompleted ? 'font-medium text-primary-strong' : 'font-medium text-text-muted'}`
               }`}
             >
               {step.label}
