@@ -228,18 +228,22 @@
     "pageCount_other": "{{count}} pages"
   },
   "signerConfig": {
-    "signerKindLabel": "Who is signing?",
-    "signerKind": {
-      "individual": "Individual",
-      "enterprise": "Business"
+    "signTypeLabel": "Signature type",
+    "signType": {
+      "PERSONAL": "Personal",
+      "BUSINESS": "Business"
     },
+    "hintNone": "Not chosen: the signer picks personal or business signing in Cas ID.",
+    "hintPersonal": "Must be signed with a personal certificate. The signer cannot switch.",
+    "hintBusiness": "Must be signed with a business certificate. The signer cannot switch.",
     "cccdLabel": "Citizen ID (CCCD)",
-    "optionalNotice": "Enter details to send the signing request to Cas ID.",
-    "enterpriseTaxCodeRequired": "A tax code (MST, CCCD) is required to sign as an enterprise.",
+    "cccdHint": "Enter the CCCD to receive the signing notification in Cas ID",
     "fullNameLabel": "Signer's full name",
     "fullNamePlaceholder": "NGUYEN VAN A",
     "taxCodeLabel": "Tax code (MST)",
     "taxCodeHint": "10 digits, optionally followed by a 3-digit branch code.",
+    "taxCodeEmptyHint": "Empty: the signer may use the certificate of any business they hold.",
+    "taxCodeFilledHint": "The signer must use the certificate of the business with tax code {{taxCode}}.",
     "organizationLabel": "Company name",
     "organizationPlaceholder": "Company name as registered",
     "representativeLabel": "Legal representative",

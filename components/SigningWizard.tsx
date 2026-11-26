@@ -216,7 +216,7 @@ function useHeightReporter(setHeight: (height: number) => void) {
 }
 
 const DEFAULT_SIGNER_CONFIG: CasSignerConfigValue = {
-  signerKind: 'individual',
+  signType: null,
   identificationNumber: '',
   taxCode: '',
   organizationName: '',
@@ -626,13 +626,22 @@ export function SigningWizard({
       const form = new FormData();
       form.append('file', file);
       form.append('signatureFields', JSON.stringify(signatureFields));
-      form.append('signerType', signerConfig.signerKind);
-      const identification = signerConfig.identificationNumber.trim();
-      if (identification) form.append('identificationNumber', identification);
-      if (signerConfig.signerKind === 'enterprise') {
-        form.append('taxCode', signerConfig.taxCode.trim());
-        form.append('organizationName', signerConfig.organizationName.trim());
-        form.append('representativeName', signerConfig.representativeName.trim());
+      // Only what the panel shows for the chosen sign type is sent: nothing
+      // without one (the signer chooses in Cas ID), the CCCD with either,
+      // the tax code / organization with BUSINESS only.
+      const { signType } = signerConfig;
+      if (signType) {
+        form.append('signType', signType);
+        const identification = signerConfig.identificationNumber.trim();
+        if (identification) form.append('identificationNumber', identification);
+      }
+      if (signType === 'BUSINESS') {
+        const taxCode = signerConfig.taxCode.trim();
+        if (taxCode) form.append('taxCode', taxCode);
+        const organizationName = signerConfig.organizationName.trim();
+        if (organizationName) form.append('organizationName', organizationName);
+        const representativeName = signerConfig.representativeName.trim();
+        if (representativeName) form.append('representativeName', representativeName);
       }
       form.append('language', i18n.language?.startsWith('en') ? 'en' : 'vi');
 
