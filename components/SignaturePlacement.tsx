@@ -29,6 +29,7 @@ import {
   clamp,
   makeAvailableField,
   type SignatureFieldProps,
+  type VisibleBand,
 } from '@/lib/domain/SignatureField';
 
 if (!GlobalWorkerOptions.workerSrc) {
@@ -46,9 +47,10 @@ if (!GlobalWorkerOptions.workerSrc) {
  * Notion, PDF readers) behave. Pages are lazily rasterized as they scroll
  * near the viewport (IntersectionObserver), never all at once, so this
  * stays cheap regardless of document length. The "add signature box" action
- * targets whichever page is currently most visible while scrolling, and the
- * click that places it can land on any page (not just the one it was
- * created on, an explicit product decision this session).
+ * targets whichever page is currently most visible while scrolling. A box
+ * only ever moves by dragging it (or its resize handle): clicking the page
+ * just deselects -- an earlier "the next click places the new box" mode was
+ * removed (per explicit request), since a stray click would jump the box.
  *
  * Also supports manual +/- zoom (`zoomFactor`, independent of the
  * container-width auto-fit scale) -- zooming in makes rendered pages wider
@@ -81,6 +83,11 @@ type SignaturePlacementProps = {
    * pages (the wizard's header + toolbar). Excluded when deciding which page
    * is "visible", and used as the offset when jumping to a page. */
   topInset?: number;
+  /** The element the pages scroll inside (the wizard's own PDF pane on
+   * wide screens). `null`/omitted: the window scrolls, as on phones --
+   * `topInset` then applies. With a scroll root, the visible area and
+   * page jumps are measured against that element instead. */
+  scrollRoot?: HTMLElement | null;
 };
 
 export type SignaturePlacementHandle = {
@@ -88,7 +95,35 @@ export type SignaturePlacementHandle = {
   zoomOut: () => void;
   addField: () => void;
   goToPage: (page: number) => void;
+  /** Select a box and scroll it into view (the wizard's field list). */
+  focusField: (index: number) => void;
+  /** Same as the box's own "Xoá" button. */
+  removeField: (index: number) => void;
 };
+
+/**
+ * 1-based number shown on each box, counted across the whole document
+ * (page order, then creation order within a page) so it matches the
+ * wizard's total "N ô ký" counter and its field list. Deliberately not by
+ * on-page position: that would renumber boxes while one is being dragged
+ * up or down. Returns `ordinals[fieldIndex]`.
+ */
+export function fieldOrdinals(fields: readonly SignatureFieldProps[]): number[] {
+  const indexesByPage = new Map<number, number[]>();
+  fields.forEach((field, index) => {
+    const list = indexesByPage.get(field.page) ?? [];
+    list.push(index);
+    indexesByPage.set(field.page, list);
+  });
+  const ordinals: number[] = [];
+  let next = 1;
+  [...indexesByPage.keys()]
+    .sort((a, b) => a - b)
+    .forEach((page) => {
+      for (const index of indexesByPage.get(page) ?? []) ordinals[index] = next++;
+    });
+  return ordinals;
+}
 
 type PageMetrics = { widthPx: number; heightPx: number };
 type PdfPage = Awaited<ReturnType<PDFDocumentProxy['getPage']>>;
@@ -99,6 +134,8 @@ const RENDER_ROOT_MARGIN = '800px 0px';
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2.5;
 const ZOOM_STEP = 0.25;
+/** 100% = the page fits the stage's inner width (see renderPage). */
+const DEFAULT_ZOOM = 1;
 
 function SignaturePlacementInner(
   {
@@ -111,6 +148,7 @@ function SignaturePlacementInner(
     onZoomFactorChange,
     onCanAddFieldChange,
     topInset = 0,
+    scrollRoot = null,
   }: SignaturePlacementProps,
   ref: React.Ref<SignaturePlacementHandle>
 ) {
@@ -125,7 +163,7 @@ function SignaturePlacementInner(
   const renderedPagesRef = useRef(new Set<number>());
   const suppressClickUntilRef = useRef(0);
   const endGestureRef = useRef<(() => void) | null>(null);
-  const zoomFactorRef = useRef(0.8);
+  const zoomFactorRef = useRef(DEFAULT_ZOOM);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,8 +173,7 @@ function SignaturePlacementInner(
   const [isDragging, setIsDragging] = useState(false);
   const [visiblePage, setVisiblePage] = useState(1);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [isPlacingNew, setIsPlacingNew] = useState(false);
-  const [zoomFactor, setZoomFactor] = useState(0.8);
+  const [zoomFactor, setZoomFactor] = useState(DEFAULT_ZOOM);
   const [containerWidth, setContainerWidth] = useState(0);
 
   useEffect(() => {
@@ -153,20 +190,8 @@ function SignaturePlacementInner(
     return map;
   }, [fields]);
 
-  // 1-based number shown on each box, counted across the whole document
-  // (page order, then creation order within a page) so it matches the
-  // wizard's total "N ô ký" counter. Deliberately not by on-page position:
-  // that would renumber boxes while one is being dragged up or down.
-  const ordinalByIndex = useMemo(() => {
-    const ordinals: number[] = [];
-    let next = 1;
-    [...fieldsByPage.keys()]
-      .sort((a, b) => a - b)
-      .forEach((page) => {
-        for (const { index } of fieldsByPage.get(page) ?? []) ordinals[index] = next++;
-      });
-    return ordinals;
-  }, [fieldsByPage]);
+  // See fieldOrdinals: shared with the wizard's field list.
+  const ordinalByIndex = useMemo(() => fieldOrdinals(fields), [fields]);
 
   const fieldsOnVisiblePage = useMemo(
     () => fieldsByPage.get(visiblePage) ?? [],
@@ -214,12 +239,27 @@ function SignaturePlacementInner(
     const context = canvas.getContext('2d');
     if (!context) return;
 
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    // Render the bitmap at the screen's real pixel density (Retina = 2x):
+    // a canvas sized only in CSS pixels gets upscaled by the browser and
+    // looks blurry. Layout (style size, pageMetrics, field positions) stays
+    // in CSS pixels. Capped so a high zoom on a dense screen never exceeds
+    // iOS Safari's ~16.7M-pixel canvas limit (which renders blank instead).
+    const MAX_CANVAS_PIXELS = 16_000_000;
+    const ratio = Math.min(
+      window.devicePixelRatio || 1,
+      Math.sqrt(MAX_CANVAS_PIXELS / (viewport.width * viewport.height))
+    );
+    canvas.width = Math.floor(viewport.width * ratio);
+    canvas.height = Math.floor(viewport.height * ratio);
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
-    context.clearRect(0, 0, viewport.width, viewport.height);
-    const renderTask = page.render({ canvas, canvasContext: context, viewport });
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    const renderTask = page.render({
+      canvas,
+      canvasContext: context,
+      viewport,
+      transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined,
+    });
     renderTasksRef.current.set(pageNumber, renderTask);
     try {
       await renderTask.promise;
@@ -251,8 +291,7 @@ function SignaturePlacementInner(
       setPageMetrics({});
       setVisiblePage(1);
       setSelectedIndex(null);
-      setIsPlacingNew(false);
-      setZoomFactor(0.8);
+      setZoomFactor(DEFAULT_ZOOM);
       canvasRefs.current.clear();
       overlayRefs.current.clear();
       pageWrapperRefs.current.clear();
@@ -300,9 +339,9 @@ function SignaturePlacementInner(
     };
   }, [file]);
 
-  // Lazy-render pages as they scroll near the viewport. `root: null`
-  // (viewport) -- the stage doesn't scroll vertically itself, the page does
-  // (see SigningWizard.tsx's single page scroll).
+  // Lazy-render pages as they scroll near the visible area: the wizard's
+  // PDF pane when it scrolls on its own (`scrollRoot`, wide screens), else
+  // the viewport (`root: null`, phones -- the page itself scrolls).
   useEffect(() => {
     if (!stageRef.current || !pageCount) return;
     const observer = new IntersectionObserver(
@@ -316,11 +355,11 @@ function SignaturePlacementInner(
           }
         }
       },
-      { root: null, rootMargin: RENDER_ROOT_MARGIN }
+      { root: scrollRoot, rootMargin: RENDER_ROOT_MARGIN }
     );
     for (const el of pageWrapperRefs.current.values()) observer.observe(el);
     return () => observer.disconnect();
-  }, [pageCount, renderPage]);
+  }, [pageCount, renderPage, scrollRoot]);
 
   // Which page is "visible" (drives the page readout + the "Chọn vị trí ký"
   // target page). Measured against the REAL visible area -- below the sticky
@@ -333,12 +372,14 @@ function SignaturePlacementInner(
     let frame = 0;
     const update = () => {
       frame = 0;
-      const viewTop = topInset;
-      const viewBottom = window.innerHeight;
+      const rootRect = scrollRoot?.getBoundingClientRect();
+      const viewTop = rootRect ? rootRect.top : topInset;
+      const viewBottom = rootRect ? rootRect.bottom : window.innerHeight;
       // Scrolled all the way down: the last page that shows at all is the
       // one being looked at, even if it can't fill most of the screen.
-      const atBottom =
-        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      const atBottom = scrollRoot
+        ? scrollRoot.clientHeight + scrollRoot.scrollTop >= scrollRoot.scrollHeight - 2
+        : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
       let bestPage = 0;
       let bestVisible = 0;
       for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
@@ -358,14 +399,15 @@ function SignaturePlacementInner(
       if (!frame) frame = window.requestAnimationFrame(update);
     };
     schedule();
-    window.addEventListener('scroll', schedule, { passive: true });
+    const scrollTarget: HTMLElement | Window = scrollRoot ?? window;
+    scrollTarget.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule);
     return () => {
-      window.removeEventListener('scroll', schedule);
+      scrollTarget.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
       if (frame) window.cancelAnimationFrame(frame);
     };
-  }, [pageCount, pageMetrics, zoomFactor, topInset]);
+  }, [pageCount, pageMetrics, zoomFactor, topInset, scrollRoot]);
 
   // The render scale is derived from container width (see renderPage above),
   // so already-rendered pages need re-rasterizing when the container resizes.
@@ -392,50 +434,58 @@ function SignaturePlacementInner(
     [onFieldsChange]
   );
 
-  const centredAt = useCallback(
-    (
-      base: SignatureFieldProps,
-      xPx: number,
-      yPx: number,
-      metrics: PageMetrics
-    ): SignatureFieldProps => ({
-      ...base,
-      xRatio: clamp(
-        xPx / metrics.widthPx - base.widthRatio / 2,
-        0,
-        Math.max(1 - base.widthRatio, 0)
-      ),
-      yRatio: clamp(
-        yPx / metrics.heightPx - base.heightRatio / 2,
-        0,
-        Math.max(1 - base.heightRatio, 0)
-      ),
-    }),
-    []
-  );
-
-  // The default slot is near the bottom of the page, often below the fold
-  // -- without this the new box can land where the user isn't looking.
+  // Safety net: the new box is placed inside the visible part of the page
+  // (below), so normally nothing scrolls -- but if the layout shifts right
+  // after adding (e.g. a pane resizing), it is brought back into view.
   const pendingScrollIndexRef = useRef<number | null>(null);
+
+  /** The part of `pageNumber` currently on screen, as fractions of its
+   * height -- measured against the same visible area as the "current page"
+   * readout (the PDF pane on wide screens, else the window below
+   * `topInset`). `undefined` if the page isn't laid out or not in view. */
+  const visibleBandOf = useCallback(
+    (pageNumber: number): VisibleBand | undefined => {
+      const el = pageWrapperRefs.current.get(pageNumber);
+      if (!el) return undefined;
+      const rect = el.getBoundingClientRect();
+      if (rect.height <= 0) return undefined;
+      const rootRect = scrollRoot?.getBoundingClientRect();
+      const viewTop = rootRect ? rootRect.top : topInset;
+      const viewBottom = rootRect ? rootRect.bottom : window.innerHeight;
+      const top = (Math.max(rect.top, viewTop) - rect.top) / rect.height;
+      const bottom = (Math.min(rect.bottom, viewBottom) - rect.top) / rect.height;
+      return bottom > top ? { top, bottom } : undefined;
+    },
+    [scrollRoot, topInset]
+  );
 
   const addFieldToPage = useCallback(() => {
     const metrics = pageMetrics[visiblePage];
     if (disabled || !metrics) return;
+    // Lands in the part of the page the user is looking at (not a fixed
+    // slot near the page bottom, which made the view jump down).
     const next = makeAvailableField(
       visiblePage,
-      fieldsOnVisiblePage.map(({ field }) => field)
+      fieldsOnVisiblePage.map(({ field }) => field),
+      visibleBandOf(visiblePage)
     );
     onFieldsChange((current) => [...current, next]);
     setSelectedIndex(fields.length);
-    setIsPlacingNew(true);
     pendingScrollIndexRef.current = fields.length;
-  }, [disabled, pageMetrics, visiblePage, fieldsOnVisiblePage, fields.length, onFieldsChange]);
+  }, [
+    disabled,
+    pageMetrics,
+    visiblePage,
+    fieldsOnVisiblePage,
+    fields.length,
+    onFieldsChange,
+    visibleBandOf,
+  ]);
 
-  // Placing the first box also opens the wizard's left column, which narrows
-  // the stage and re-renders every page -- scrolling right away would aim at
-  // where the box *was*. So the scroll waits until the layout stops changing
-  // (each re-render updates `containerWidth`/`pageMetrics`, re-running this
-  // effect and restarting the timer), then scrolls to the box element itself.
+  // Waits until the layout stops changing (each re-render updates
+  // `containerWidth`/`pageMetrics`, re-running this effect and restarting the
+  // timer), then makes sure the new box is in view. `nearest`: a box that is
+  // already visible -- the normal case -- doesn't move the view at all.
   useEffect(() => {
     const index = pendingScrollIndexRef.current;
     if (index == null || !fields[index]) return;
@@ -443,7 +493,7 @@ function SignaturePlacementInner(
       pendingScrollIndexRef.current = null;
       stageRef.current
         ?.querySelector(`[data-field-index="${index}"]`)
-        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }, 250);
     return () => window.clearTimeout(id);
   }, [fields, pageMetrics, containerWidth]);
@@ -453,44 +503,17 @@ function SignaturePlacementInner(
       if (disabled) return;
       onFieldsChange((current) => current.filter((_, i) => i !== index));
       setSelectedIndex(null);
-      setIsPlacingNew(false);
     },
     [disabled, onFieldsChange]
   );
 
-  const handlePageOverlayClick = useCallback(
-    (pageNumber: number, event: React.MouseEvent<HTMLDivElement>) => {
-      const metrics = pageMetrics[pageNumber];
-      const overlay = overlayRefs.current.get(pageNumber);
-      if (disabled || !metrics || !overlay) return;
-      if (Date.now() < suppressClickUntilRef.current) return;
-      if (!isPlacingNew) {
-        setSelectedIndex(null);
-        return;
-      }
-      const target = selectedIndex ?? fieldsByPage.get(pageNumber)?.[0]?.index ?? null;
-      setIsPlacingNew(false);
-      if (target == null || !fields[target]) return;
-      const bounds = overlay.getBoundingClientRect();
-      const xPx = clamp(event.clientX - bounds.left, 0, metrics.widthPx);
-      const yPx = clamp(event.clientY - bounds.top, 0, metrics.heightPx);
-      // Reassign `page` too, not just x/y -- lets a box created while one
-      // page was in view be placed on whichever page the user scrolls to
-      // and clicks next (explicit product decision, see the module comment).
-      updateField(target, { ...centredAt(fields[target], xPx, yPx, metrics), page: pageNumber });
-      setSelectedIndex(target);
-    },
-    [
-      disabled,
-      pageMetrics,
-      isPlacingNew,
-      selectedIndex,
-      fieldsByPage,
-      fields,
-      updateField,
-      centredAt,
-    ]
-  );
+  // Clicking the page (not a box) only deselects. Boxes move by drag only;
+  // the click right after a drag/resize is swallowed (suppressClickUntil).
+  const handlePageOverlayClick = useCallback(() => {
+    if (disabled) return;
+    if (Date.now() < suppressClickUntilRef.current) return;
+    setSelectedIndex(null);
+  }, [disabled]);
 
   const startGesture = useCallback(
     (event: React.PointerEvent<HTMLElement>, index: number, mode: 'move' | 'resize') => {
@@ -577,13 +600,23 @@ function SignaturePlacementInner(
       const safe = clamp(Math.trunc(pageNumber), 1, pageCount);
       const el = pageWrapperRefs.current.get(safe);
       if (!el) return;
-      // Window scroll (not scrollIntoView) so the page top lands just below
-      // the sticky header/toolbar instead of underneath it, and the stage's
-      // own horizontal scroll position is left alone.
+      // Explicit vertical scroll (not scrollIntoView) so the page top lands
+      // just below the sticky header/toolbar (window) or the pane's top
+      // edge (scrollRoot), and the stage's own horizontal scroll position
+      // is left alone.
+      if (scrollRoot) {
+        const top =
+          el.getBoundingClientRect().top -
+          scrollRoot.getBoundingClientRect().top +
+          scrollRoot.scrollTop -
+          8;
+        scrollRoot.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        return;
+      }
       const top = el.getBoundingClientRect().top + window.scrollY - topInset - 8;
       window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
     },
-    [pageCount, topInset]
+    [pageCount, topInset, scrollRoot]
   );
 
   const zoomOut = useCallback(() => {
@@ -638,37 +671,37 @@ function SignaturePlacementInner(
       zoomOut,
       addField: addFieldToPage,
       goToPage: scrollToPage,
+      focusField: (index: number) => {
+        if (!fields[index]) return;
+        setSelectedIndex(index);
+        stageRef.current
+          ?.querySelector(`[data-field-index="${index}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      },
+      removeField,
     }),
-    [zoomIn, zoomOut, addFieldToPage, scrollToPage]
+    [zoomIn, zoomOut, addFieldToPage, scrollToPage, removeField, fields]
   );
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-        <span className={isPlacingNew && !loading ? 'font-medium text-primary-strong' : 'italic'}>
-          {loading
-            ? t('sign.renderingPreview')
-            : isPlacingNew
-              ? t('sign.placingNewFieldHint')
-              : t('sign.clickOrDrag')}
-        </span>
-        {fields.length === 0 && (
-          <span className="text-text-muted">{t('sign.addFirstFieldHint')}</span>
-        )}
-      </div>
+      {/* Only while the preview is loading -- the always-on "scroll to see
+          pages" / "no field yet" lines and the "click where you want the
+          box" hint were dropped (per explicit request) so the PDF is all
+          this pane shows. */}
+      {loading && <p className="text-xs italic text-gray-600">{t('sign.renderingPreview')}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div
         ref={stageRef}
-        // Dark background (was white) -- makes each white PDF page's own
-        // edges/boundaries visually obvious against the surrounding stage,
-        // especially once zoomed in and there's real empty space around/
-        // between pages (matches the convention most PDF viewers use). No
-        // longer scroll-contained -- grows to its natural height and scrolls
-        // along with the page (see SigningWizard.tsx's single page scroll).
-        // `overflow-x-auto`: zoomed past 100% a page is wider than the stage;
-        // scroll it sideways here instead of letting it spill over the
-        // signer column next to it (it used to, from ~150% zoom up).
-        className="relative mx-auto w-full max-w-none space-y-4 overflow-x-auto rounded-md border border-gray-700 bg-neutral-900 p-2"
+        // Light gray stage (was near-black, which felt heavy next to the
+        // light app UI) -- each white page gets a shadow + hairline ring
+        // (PdfPageBlock) so its edges stay obvious against the stage,
+        // especially once zoomed in, like light-mode PDF viewers do. Grows
+        // to its natural height; the wizard's PDF pane (wide screens) or the
+        // page (phones) does the vertical scrolling. `overflow-x-auto`:
+        // zoomed past 100% a page is wider than the stage; scroll it
+        // sideways here instead of letting it spill over the signer pane.
+        className="relative mx-auto w-full max-w-none space-y-4 overflow-x-auto rounded-xl border border-border-subtle bg-gray-100 p-2"
       >
         {pageNumbers.map((pageNumber) => (
           <PdfPageBlock
@@ -734,7 +767,7 @@ function PdfPageBlock({
   registerWrapperRef: (pageNumber: number, el: HTMLDivElement | null) => void;
   registerCanvasRef: (pageNumber: number, el: HTMLCanvasElement | null) => void;
   registerOverlayRef: (pageNumber: number, el: HTMLDivElement | null) => void;
-  onOverlayClick: (pageNumber: number, event: React.MouseEvent<HTMLDivElement>) => void;
+  onOverlayClick: () => void;
   onFieldPointerDown: (
     event: React.PointerEvent<HTMLElement>,
     index: number,
@@ -748,7 +781,7 @@ function PdfPageBlock({
     <div
       ref={(el) => registerWrapperRef(pageNumber, el)}
       data-page={pageNumber}
-      className="relative mx-auto w-full"
+      className="relative mx-auto w-full bg-white shadow-md ring-1 ring-black/5"
       style={{
         aspectRatio: aspect ? `1 / ${aspect}` : undefined,
         width: widthPx,
@@ -756,7 +789,7 @@ function PdfPageBlock({
     >
       <div
         className="relative h-full w-full"
-        onClick={(event) => onOverlayClick(pageNumber, event)}
+        onClick={onOverlayClick}
       >
         <canvas
           ref={(el) => registerCanvasRef(pageNumber, el)}

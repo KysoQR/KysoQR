@@ -48,7 +48,13 @@
     "recentSignatures": {
       "title": "5 phiên ký gần nhất",
       "downloadButton": "Tải xuống",
-      "downloadError": "Không tải được file này (có thể đã hết lượt tải). Vui lòng dùng bản đã tải trước đó."
+      "downloadError": "Không tải được file này (có thể đã hết lượt tải). Vui lòng dùng bản đã tải trước đó.",
+      "pending": "Đang chờ ký",
+      "storedNote": "Lưu trên trình duyệt này trong 30 phút",
+      "clearHistory": "Xoá lịch sử",
+      "clearConfirm": "Xoá toàn bộ lịch sử ký trên máy này?",
+      "clearConfirmYes": "Xoá",
+      "clearConfirmNo": "Huỷ"
     },
     "branding": {
       "eyebrow": "Hệ sinh thái Casso",
@@ -184,8 +190,7 @@
     "madeBy": "Một sản phẩm của"
   },
   "scrollCue": {
-    "landing": "Xem các phương thức ký",
-    "scan": "Chưa có chữ ký số? Kéo xuống để đăng ký"
+    "landing": "Xem các phương thức ký"
   },
   "steps": {
     "progressLabel": "Bước {{current}}/{{total}}",
@@ -216,23 +221,27 @@
     "errorNotPdf": "Chỉ hỗ trợ tệp PDF. Vui lòng chọn một tài liệu PDF.",
     "errorTooLarge": "Tệp quá lớn. Vui lòng chọn PDF có dung lượng tối đa {{maxMb}} MB.",
     "requirements": "Chỉ PDF • tối đa {{maxMb}} MB",
-    "selectedLabel": "Sẵn sàng tải lên",
     "noFile": "Chưa có tệp nào được chọn. Hãy chọn một PDF để bắt đầu.",
-    "changeFile": "Đổi tệp khác"
+    "removeFile": "Xoá tệp",
+    "pageCount_other": "{{count}} trang"
   },
   "signerConfig": {
-    "signerKindLabel": "Người ký là ai?",
-    "signerKind": {
-      "individual": "Cá nhân",
-      "enterprise": "Doanh nghiệp"
+    "signTypeLabel": "Loại ký",
+    "signType": {
+      "PERSONAL": "Cá nhân",
+      "BUSINESS": "Doanh nghiệp"
     },
+    "hintNone": "Chưa chọn: người ký tự chọn ký cá nhân hoặc doanh nghiệp trên Cas ID.",
+    "hintPersonal": "Bắt buộc ký bằng chứng thư cá nhân. Người ký không được đổi loại ký.",
+    "hintBusiness": "Bắt buộc ký bằng chứng thư doanh nghiệp. Người ký không được đổi loại ký.",
     "cccdLabel": "CCCD người ký",
-    "optionalNotice": "Nhập thông tin thì gửi yêu cầu ký sang Cas ID.",
-    "enterpriseTaxCodeRequired": "Bắt buộc nhập MST, CCCD để ký doanh nghiệp.",
+    "cccdHint": "Nhập CCCD để nhận thông báo ký trên Cas ID",
     "fullNameLabel": "Họ tên người ký",
     "fullNamePlaceholder": "NGUYỄN VĂN A",
     "taxCodeLabel": "Mã số thuế (MST)",
     "taxCodeHint": "10 số, có thể kèm 3 số chi nhánh.",
+    "taxCodeEmptyHint": "Để trống: người ký dùng chứng thư số của bất kỳ doanh nghiệp nào họ có.",
+    "taxCodeFilledHint": "Người ký bắt buộc dùng chứng thư số của doanh nghiệp có MST {{taxCode}}.",
     "organizationLabel": "Tên công ty",
     "organizationPlaceholder": "Tên công ty theo đăng ký",
     "representativeLabel": "Người đại diện",
@@ -259,19 +268,10 @@
       },
       "videoTitle": "Hướng dẫn đăng ký chứng thư số CAS CERT trên app Cas ID"
     },
-    "title": "Quét QR (Cấp quyền ký tài liệu)",
-    "subtitle": "Cho phép được ký tài liệu này bằng ứng dụng Cas ID của bạn.",
     "instruction": "Yêu cầu người ký quét mã QR này bằng ứng dụng Cas ID và phê duyệt quyền ký.",
-    "caption": "Quét bằng ứng dụng Cas ID",
     "syncStatus": "Cập nhật trạng thái",
-    "back": "Quay lại chỉnh sửa",
-    "qrPayload": "Nội dung QR:",
-    "status": "Trạng thái ký",
     "waiting": "Đang chờ người ký quét mã…",
     "accepted": "Đã chấp nhận — đang hoàn tất ký…",
-    "rejected": "Đã từ chối ký.",
-    "failed": "Ký không thành công do lỗi kỹ thuật. Vui lòng thử lại.",
-    "expired": "Phiên ký đã hết hạn. Hãy bắt đầu lại.",
     "statusError": "Không thể cập nhật trạng thái ký.",
     "expiresIn": "Hết hạn sau {{time}}",
     "qrRenderFailed": "Không thể hiển thị mã QR.",
@@ -279,25 +279,24 @@
     "linkLabel": "link:",
     "copyLink": "Sao chép liên kết",
     "copied": "Đã sao chép!",
-    "tip": "Mở CAS ID để quét QR cấp quyền ký hoặc nhấn vào thông báo mới gửi tới CAS ID của bạn. Chưa có CAS ID? Xem video hướng dẫn đăng ký ngay bên dưới.",
     "aria": {
       "qrCode": "Mã QR"
-    }
+    },
+    "dialogTitle": "Quét QR bằng Cas ID để ký",
+    "casCertHint": "Chưa có chứng thư số?",
+    "casCertLink": "Xem hướng dẫn đăng ký Cas Cert",
+    "qrUnavailable": "Không còn mã QR của phiên này. Hãy tạo yêu cầu ký mới."
   },
   "sign": {
     "needUploadForPreview": "Hãy tải PDF để xem trước và đặt vị trí chữ ký.",
     "submit": "Ký",
     "renderingPreview": "Đang kết xuất xem trước…",
-    "clickOrDrag": "Cuộn để xem các trang · bấm 'Chọn vị trí ký' rồi nhấp vào vị trí muốn đặt",
-    "placingNewFieldHint": "Bấm vào vị trí bạn muốn trên PDF để đặt ô ký, hoặc bỏ qua nếu vị trí hiện tại đã ổn.",
     "addField": "Chọn vị trí ký",
-    "addFirstFieldHint": "Chưa có ô ký — thêm khi bạn sẵn sàng đặt chữ ký.",
     "removeField": "Xoá ô này",
     "removeFieldShort": "Xoá",
     "dragToMove": "Kéo để di chuyển",
     "fieldLabel": "Chữ ký #{{n}}",
     "fieldSubLabel": "Người ký duyệt trên Cas ID",
-    "fieldCounter": "{{total}} ô ký · trang này {{onPage}}",
     "checkingSignatures": "Đang xác minh chữ ký…",
     "zoomIn": "Phóng to",
     "zoomOut": "Thu nhỏ",
@@ -305,7 +304,9 @@
       "signaturePlacement": "Vị trí chữ ký",
       "resizeField": "Thay đổi kích thước ô chữ ký",
       "pdfPreview": "Xem trước trang PDF"
-    }
+    },
+    "placeFieldFirstHint": "Bấm \"Chọn vị trí ký\" để đặt ô ký trên PDF, sau đó điền thông tin người ký tại đây.",
+    "goToSignerPane": "Tới phần ký"
   },
   "done": {
     "title": "Tài liệu đã ký",
@@ -328,6 +329,7 @@
   "signingRound": {
     "notFound": "Không tìm thấy mã xác minh.",
     "signedAt": "Ký lúc",
+    "popupTitle": "Chi tiết phiên ký",
     "verdict": {
       "validTitle": "Chữ ký hợp lệ",
       "validNote": "Phiên ký đã hoàn tất, chứng thư số hợp lệ và tài liệu không bị thay đổi kể từ thời điểm ký.",
@@ -430,10 +432,7 @@
   },
   "signatureHistory": {
     "title": "Lịch sử ký",
-    "subtitle_other": "Tài liệu này đã có {{count}} chữ ký số trước đó.",
-    "closeAriaLabel": "Đóng lịch sử ký",
     "chain": {
-      "title": "Chuỗi chứng thư số",
       "ca": "Tổ chức phát hành (CA)",
       "leaf": "Chứng thư số người ký",
       "serial": "Số seri",
@@ -446,6 +445,59 @@
         "revoked": "Chứng thư số ĐÃ BỊ THU HỒI",
         "unavailableWithUrl": "Không kiểm tra được"
       }
+    },
+    "existingTitle": "Chữ ký có sẵn trong tệp",
+    "existingEmpty": "Tệp chưa có chữ ký số nào.",
+    "newFieldsTitle": "Vị trí ký vừa thêm",
+    "newFieldsEmpty": "Chưa có vị trí ký. Bấm \"Chọn vị trí ký\" để thêm.",
+    "invalid": "Không hợp lệ",
+    "certInfo": "Thông tin chứng thư số",
+    "reasonTitle": "Lý do không hợp lệ",
+    "technicalDetail": "Chi tiết kỹ thuật",
+    "reasons": {
+      "ROOT_NOT_TRUSTED": "Chứng thư số được cấp bởi một tổ chức (Root CA) không nằm trong danh sách Root CA tin cậy, ví dụ CA dùng cho môi trường thử nghiệm.",
+      "CONTENT_DIGEST_MISMATCH": "Nội dung tệp PDF đã bị chỉnh sửa sau khi ký, không còn khớp với nội dung đã được ký.",
+      "CHAIN_VALIDATION_FAILED": "Chuỗi chứng thư số bị thiếu hoặc không xác minh được tới tổ chức phát hành.",
+      "SIGNATURE_INVALID": "Chữ ký số không khớp với chứng thư số, xác minh mật mã thất bại.",
+      "TRUST_STORE_NOT_CONFIGURED": "Máy chủ chưa có danh sách Root CA tin cậy để đối chiếu, nên chưa xác minh được chữ ký này.",
+      "UNSUPPORTED_SUBFILTER": "Định dạng chữ ký trong tệp PDF này chưa được hỗ trợ kiểm tra, nên chưa xác minh được chữ ký.",
+      "UNSUPPORTED_ALGORITHM": "Thuật toán khoá của chứng thư số chưa được hỗ trợ kiểm tra, nên chưa xác minh được chữ ký."
     }
+  },
+  "workspace": {
+    "signerPane": "Thông tin ký"
+  },
+  "review": {
+    "title": "Thông tin đã ký",
+    "signedBadge": "Ký thành công",
+    "signedAt": "Thời điểm ký",
+    "signer": "Người ký",
+    "authMethod": "Phương thức",
+    "viewDetails": "Xem chi tiết phiên ký",
+    "download": "Tải tài liệu về",
+    "continueSigning": "Ký tiếp"
+  },
+  "signFailed": {
+    "rejectedNote": "Yêu cầu ký đã bị từ chối trên ứng dụng Cas ID nên tài liệu chưa được ký. Bạn có thể gửi lại yêu cầu ký.",
+    "expiredNote": "Mã QR đã hết hạn trước khi người ký xác nhận nên tài liệu chưa được ký. Hãy tạo yêu cầu ký mới.",
+    "failedNote": "Có lỗi kỹ thuật trong lúc ký nên tài liệu chưa được ký. Vui lòng thử lại."
+  },
+  "signStatus": {
+    "title": "Trạng thái",
+    "pending": "Đang chờ ký",
+    "accepted": "Người ký đã xác nhận, đang hoàn tất…",
+    "rejected": "Từ chối ký",
+    "expired": "Hết hạn",
+    "failed": "Ký không thành công",
+    "pendingNote": "Người ký quét mã QR bằng ứng dụng Cas ID để ký. Trang sẽ tự cập nhật khi có kết quả.",
+    "reopenQr": "Mở lại mã QR",
+    "newRequest": "Ký yêu cầu mới",
+    "retry": "Ký lại",
+    "signNewDocument": "Ký tài liệu mới"
+  },
+  "signFailedNotice": {
+    "rejectedTitle": "Yêu cầu ký đã bị từ chối",
+    "expiredTitle": "Yêu cầu ký đã hết hạn",
+    "failedTitle": "Ký không thành công"
   }
 }

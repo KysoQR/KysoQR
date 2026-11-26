@@ -4,6 +4,10 @@ import '@/lib/i18n/init';
 import { useEffect, useState } from 'react';
 import { HomeLanding } from '@/components/HomeLanding';
 import { SigningWizard } from '@/components/SigningWizard';
+import type { RecentSignature } from '@/lib/recentSignatures';
+import { getActiveSession } from '@/lib/activeSession';
+import { SESSION_KEYS, getSessionItem } from '@/lib/signingSessionStorage';
+import { cleanupBrowserStorage } from '@/lib/browserHistory';
 
 /**
  * `/` — matches x-sign-web's real routing: a marketing landing page
@@ -21,21 +25,29 @@ import { SigningWizard } from '@/components/SigningWizard';
  */
 type View = 'home' | 'wizard';
 
-const LS_SIGN_REQUEST_ID = 'kysoqr.signRequestId';
-const LS_STATUS = 'kysoqr.status';
 const TERMINAL_STATUSES = new Set(['SIGNED', 'REJECTED', 'FAILED', 'EXPIRED']);
 
 export default function Page() {
   const [view, setView] = useState<View>('home');
   const [entryFile, setEntryFile] = useState<File | null>(null);
+  /** A "phiên ký gần nhất" opened from the home page (entryFile is then its
+   * signed PDF) -- the wizard shows it read-only first. */
+  const [entryReview, setEntryReview] = useState<RecentSignature | null>(null);
 
   useEffect(() => {
-    const savedId = window.localStorage.getItem(LS_SIGN_REQUEST_ID);
-    const savedStatus = window.localStorage.getItem(LS_STATUS);
-    // Deliberate one-time resume check from localStorage (browser-only) after
+    // Whatever page the app opens on: delete what is past the 30-minute TTL
+    // (recent list, stored PDFs, expired session) -- see lib/browserHistory.ts.
+    void cleanupBrowserStorage();
+    // This tab's round only (sessionStorage): F5 reopens it, a new tab or a
+    // fresh visit starts on the home page.
+    const savedId = getSessionItem(SESSION_KEYS.signRequestId);
+    const savedStatus = getSessionItem(SESSION_KEYS.status);
+    // Deliberate one-time resume check from sessionStorage (browser-only) after
     // mount — a lazy useState initializer would run during SSR too and
     // mismatch on hydration, so a mount effect is the correct pattern here.
-    if (savedId && savedStatus && !TERMINAL_STATUSES.has(savedStatus)) {
+    // Also reopen a session whose result was on screen (signed / failed),
+    // see lib/activeSession.ts -- the wizard restores it itself.
+    if ((savedId && savedStatus && !TERMINAL_STATUSES.has(savedStatus)) || getActiveSession()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setView('wizard');
     }
@@ -45,8 +57,10 @@ export default function Page() {
     return (
       <SigningWizard
         initialFile={entryFile}
+        initialReview={entryReview}
         onBackToHome={() => {
           setEntryFile(null);
+          setEntryReview(null);
           setView('home');
         }}
       />
@@ -57,6 +71,17 @@ export default function Page() {
     <HomeLanding
       onFileAccepted={(file) => {
         setEntryFile(file);
+        setEntryReview(null);
+        setView('wizard');
+      }}
+      onResumePending={() => {
+        setEntryFile(null);
+        setEntryReview(null);
+        setView('wizard');
+      }}
+      onRecentOpened={(file, entry) => {
+        setEntryFile(file);
+        setEntryReview(entry);
         setView('wizard');
       }}
     />

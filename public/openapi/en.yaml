@@ -110,11 +110,13 @@ paths:
                     JSON array of signature boxes (see schema `SignatureFieldInput`). At least 1; no limit per page.
                     Coordinates are 0–1 fractions, origin at the page's top-left corner.
                   example: '[{"page":1,"xRatio":0.52,"yRatio":0.78,"widthRatio":0.34,"heightRatio":0.1}]'
-                signerType:
+                signType:
                   type: string
-                  enum: [individual, enterprise]
-                  default: individual
-                  description: Signer type. Any other value → `400 INVALID_SIGNER_CONFIG`.
+                  enum: [PERSONAL, BUSINESS]
+                  description: |
+                    Signature type, passed straight to CAS. `PERSONAL`: the signer must sign with a personal certificate. `BUSINESS`: with a business certificate. When set, the signer **cannot switch** type in Cas ID.
+                    **Omit it** to let the signer choose in Cas ID. Any other value → `400 INVALID_SIGNER_CONFIG`.
+                    Replaces the old `signerType` field (`individual`/`enterprise`): a request still sending `signerType` gets `400 INVALID_SIGNER_CONFIG`.
                 identificationNumber:
                   type: string
                   pattern: '^\d{9}$|^\d{12}$'
@@ -124,13 +126,15 @@ paths:
                 taxCode:
                   type: string
                   pattern: '^\d{10}$|^\d{10}-\d{3}$'
-                  description: Tax code. **Required when `signerType=enterprise`** (missing → `400 INVALID_SIGNER_CONFIG`, message `taxCode is required for enterprise signers`); ignored for individuals. 10 digits, or 10 digits + `-` + 3 digits.
+                  description: |
+                    Tax code, **optional**, only used when `signType=BUSINESS` (ignored otherwise). 10 digits, or 10 digits + `-` + 3 digits; malformed → `400 INVALID_SIGNER_CONFIG`.
+                    With a tax code the signer must use that business's certificate; without one, any business certificate they hold.
                 organizationName:
                   type: string
-                  description: Organization name, only used when `signerType=enterprise`. Sent to CAS when non-empty.
+                  description: Organization name, only used when `signType=BUSINESS`. Sent to CAS when non-empty.
                 representativeName:
                   type: string
-                  description: Legal representative, only used when `signerType=enterprise`. Validated but **never sent to CAS**.
+                  description: Legal representative, only used when `signType=BUSINESS`. **Never sent to CAS**.
                 language:
                   type: string
                   enum: [vi, en]
@@ -172,9 +176,9 @@ paths:
                 invalid_signer_config:
                   summary: Bad signer details
                   value: { error: INVALID_SIGNER_CONFIG, message: identificationNumber must be 9 or 12 digits }
-                enterprise_missing_tax_code:
-                  summary: Enterprise signer without a tax code
-                  value: { error: INVALID_SIGNER_CONFIG, message: taxCode is required for enterprise signers }
+                invalid_sign_type:
+                  summary: Invalid signType
+                  value: { error: INVALID_SIGNER_CONFIG, message: 'signType must be "PERSONAL" or "BUSINESS"' }
                 invalid_language:
                   summary: Bad language
                   value: { error: INVALID_LANGUAGE, message: 'language must be "vi" or "en"' }
@@ -513,7 +517,7 @@ paths:
 
         The code is printed on the PDF, so anyone holding the file can look it up: the response holds only the fields listed
         in the schema (allow-list), a citizen ID is masked to its last 4 digits (a `MST:` tax code is kept), and `device` keeps
-        only `model`. A code of the wrong shape (must be `<prefix>#<code>`, e.g. `kysoqr.com#3bLzsA`) returns
+        only `model`. A code of the wrong shape (must be `<prefix>#<code>`, e.g. `kysoqr.com#3bLzsA`; the code part is 6–32 characters of letters, digits, `_` and `-`, e.g. `kysoqr.com#nm_DRT`) returns
         `signingRound: null` without calling CAS.
 
         Source: `app/api/verify/signing-round/[orgIdSigned]/route.ts`, `lib/cas/CasProvider.ts` (`SigningRoundDetail`).

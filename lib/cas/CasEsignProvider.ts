@@ -157,6 +157,7 @@ export class CasEsignProvider implements CasProvider {
     form.append('documentName', input.documentName);
     form.append('signatureFields', JSON.stringify(input.signatureFields));
     if (input.organizationName) form.append('organizationName', input.organizationName);
+    if (input.signType) form.append('signType', input.signType);
     if (input.taxCode) form.append('taxCode', input.taxCode);
     if (input.language) form.append('language', input.language);
     if (input.identificationNumber) form.append('identificationNumber', input.identificationNumber);

@@ -8,15 +8,24 @@ import Header from './Header';
 import Footer from './Footer';
 import { SIGNING_METHODS_SECTION_ID, SigningMethodsSection } from './home/SigningMethodsSection';
 import { ScrollCue } from './ScrollCue';
+import { HeaderSteps } from './signing/HeaderSteps';
 import { CasIdVideoGuide } from './signing/CasIdVideoGuide';
 import { LANDING_GUIDE_VIDEO_EMBED_URL } from '@/lib/branding/signingMethods';
 import { ButtonSpinner } from './signing/Spinners';
 import { MAX_SIGN_UPLOAD_SIZE_MB } from './signing/constants';
-import { getRecentSignatures, type RecentSignature } from '@/lib/recentSignatures';
+import {
+  forgetIdentityKey,
+  getRecentSignatures,
+  isPendingSignature,
+  type RecentSignature,
+} from '@/lib/recentSignatures';
 import { downloadSignedPdfBlob, signedFileName, triggerBlobDownload } from '@/lib/downloadSignedPdf';
+import { getSignedPdf, saveSignedPdf } from '@/lib/signedPdfStore';
+import { cleanupBrowserStorage, clearBrowserHistory } from '@/lib/browserHistory';
+import { SESSION_KEYS, removeSessionItem, setSessionItem } from '@/lib/signingSessionStorage';
 
-const HOME_STEP_KEYS = ['upload', 'place', 'sign', 'download'] as const;
 const SUPPORTED_FILE_FORMATS = ['PDF'];
+const HOME_STEP_KEYS = ['upload', 'place', 'sign', 'download'] as const;
 
 /**
  * Ported from x-sign-web/src/features/home/HomePage.tsx. Adapted for the new
@@ -28,9 +37,21 @@ const SUPPORTED_FILE_FORMATS = ['PDF'];
  * (client-side, no network round-trip yet).
  *
  * Looking up a signing round and verifying an already-signed PDF both live
- * on `/verify`. A recent-signature chip here only navigates there.
+ * on `/verify`. A recent-signature chip opens that round's signed PDF in the
+ * signing wizard (review mode) when the PDF is still obtainable, else falls
+ * back to `/verify`.
  */
-export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) => void }) {
+export function HomeLanding({
+  onFileAccepted,
+  onRecentOpened,
+  onResumePending,
+}: {
+  onFileAccepted: (file: File) => void;
+  onRecentOpened: (file: File, entry: RecentSignature) => void;
+  /** A "Đang chờ ký" entry was clicked: its round is primed in sessionStorage
+   * and the wizard resumes it (QR popup, polling, file from IndexedDB). */
+  onResumePending: () => void;
+}) {
   const { t } = useTranslation();
   const router = useRouter();
   const [dragCounter, setDragCounter] = useState(0);
@@ -47,13 +68,27 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
   // mount effect defers this until after that first render/hydration is
   // already committed, matching the same pattern this codebase already
   // uses for `SigningWizard.tsx`'s own `existingSignatures`.
+  const homeSteps = HOME_STEP_KEYS.map((key) => ({ key, label: t(`home.steps.${key}.title`) }));
   const [recentSignatures, setRecentSignatures] = useState<RecentSignature[]>([]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecentSignatures(getRecentSignatures());
+    // Housekeeping on every visit: drop entries past the 30-minute TTL, pending
+    // rounds whose QR expired, expired download keys, and PDFs nothing
+    // refers to any more (lib/browserHistory.ts).
+    void cleanupBrowserStorage().then(() => setRecentSignatures(getRecentSignatures()));
   }, []);
+  /** "Xoá lịch sử": first click asks, second one clears. */
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const handleClearHistory = async () => {
+    await clearBrowserHistory();
+    setConfirmingClear(false);
+    setRecentDownloadError(null);
+    setRecentSignatures([]);
+  };
   const [recentDownloadError, setRecentDownloadError] = useState<string | null>(null);
   const [downloadingCode, setDownloadingCode] = useState<string | null>(null);
+  const [openingCode, setOpeningCode] = useState<string | null>(null);
 
   const handleFileSelected = (selected: File | null) => {
     if (!selected) return;
@@ -72,15 +107,24 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
     onFileAccepted(selected);
   };
 
+  /** The signed PDF of a recent round: the copy kept in this browser first
+   * (no CAS download spent), else via identityKey -- then kept locally and
+   * the key forgotten. Throws if neither is available. */
+  const loadSignedPdf = async (entry: RecentSignature): Promise<Blob> => {
+    const stored = await getSignedPdf(entry.code);
+    if (stored) return stored;
+    if (!entry.identityKey) throw new Error('no local copy and no download key');
+    const blob = await downloadSignedPdfBlob(entry.identityKey);
+    await saveSignedPdf(entry.code, blob);
+    forgetIdentityKey(entry.code);
+    return blob;
+  };
+
   const handleDownloadRecent = async (entry: RecentSignature) => {
-    if (!entry.identityKey) {
-      setRecentDownloadError(t('home.recentSignatures.downloadError'));
-      return;
-    }
     setDownloadingCode(entry.code);
     setRecentDownloadError(null);
     try {
-      const blob = await downloadSignedPdfBlob(entry.identityKey);
+      const blob = await loadSignedPdf(entry);
       triggerBlobDownload(blob, signedFileName(entry.name));
     } catch (err) {
       console.warn('[home] recent-signature download failed', err);
@@ -90,8 +134,43 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
     }
   };
 
-  const handleViewRecent = (entry: RecentSignature) => {
-    router.push(`/verify/?code=${encodeURIComponent(entry.code)}`);
+  /** Open a recent round in the signing wizard. The signed PDF comes from
+   * the browser-local copy saved when it was signed; failing that, from CAS
+   * via identityKey while it's still valid (spends 1 of its ~5 downloads,
+   * then saved locally so it's only spent once). With neither, fall back to
+   * the round lookup on `/verify` as before. */
+  const handleViewRecent = async (entry: RecentSignature) => {
+    if (openingCode) return;
+    if (isPendingSignature(entry)) {
+      if (!entry.signRequestId) return;
+      // Same keys SigningWizard persists a waiting round under -- its mount
+      // effect then resumes it exactly like after a reload.
+      setSessionItem(SESSION_KEYS.signRequestId, entry.signRequestId);
+      setSessionItem(SESSION_KEYS.status, 'PENDING');
+      setSessionItem(SESSION_KEYS.documentName, entry.name);
+      if (entry.qrContent) setSessionItem(SESSION_KEYS.qrContent, entry.qrContent);
+      else removeSessionItem(SESSION_KEYS.qrContent);
+      onResumePending();
+      return;
+    }
+    setOpeningCode(entry.code);
+    setRecentDownloadError(null);
+    try {
+      // Expired keys are already dropped when the list is read.
+      let blob: Blob | null = null;
+      try {
+        blob = await loadSignedPdf(entry);
+      } catch (err) {
+        console.warn('[home] recent-signature fetch failed', err);
+      }
+      if (blob) {
+        onRecentOpened(new File([blob], entry.name, { type: 'application/pdf' }), entry);
+        return;
+      }
+      router.push(`/verify/?code=${encodeURIComponent(entry.code)}`);
+    } finally {
+      setOpeningCode(null);
+    }
   };
 
   return (
@@ -99,32 +178,107 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
       <Header />
 
       <main className="flex-1 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-10 px-4 py-8 sm:px-6 sm:py-10">
-          <section className="w-full max-w-3xl text-center">
+        {/* Hero -> recent sessions -> upload card. The 4-step row that used
+            to sit between them is gone (the wizard's header already shows
+            the steps), and the bottom padding keeps the floating ScrollCue
+            ("Xem các phương thức ký") clear of the upload card. */}
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 px-4 pb-16 pt-4 sm:px-6 sm:pt-6">
+          <section className="w-full text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-text-strong sm:text-5xl">
               {t('home.title')}
             </h1>
 
+            {/* The 4 signing steps, same compact indicator as the wizard's
+                header (step 1 current: upload a PDF). */}
+            <div className="mt-4 flex justify-center">
+              <HeaderSteps steps={homeSteps} currentStepIndex={0} allLabelsFrom="md" />
+            </div>
+
             {recentSignatures.length > 0 && (
-              <div className="mt-6">
-                <div className="text-xs font-semibold text-text-main">
-                  {t('home.recentSignatures.title')}
+              <div className="mt-7">
+                {/* Label, then (same row, wrapping below it on phones) where
+                    these are kept and the way to clear them. */}
+                <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    {t('home.recentSignatures.title')}
+                  </div>
+                  <span aria-hidden="true" className="hidden text-[11px] text-text-muted sm:inline">·</span>
+                  {/* Where these live, for how long, and a way to wipe them
+                      (shared computers) -- lib/browserHistory.ts. */}
+                  <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-[11px] text-text-muted">
+                    {confirmingClear ? (
+                      <>
+                        <span>{t('home.recentSignatures.clearConfirm')}</span>
+                        <button
+                          type="button"
+                          onClick={() => void handleClearHistory()}
+                          className="font-semibold text-error-text hover:underline"
+                        >
+                          {t('home.recentSignatures.clearConfirmYes')}
+                        </button>
+                        <span aria-hidden="true">·</span>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingClear(false)}
+                          className="hover:text-text-main hover:underline"
+                        >
+                          {t('home.recentSignatures.clearConfirmNo')}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <Icon icon="lucide:hard-drive" className="h-3 w-3" />
+                        <span>{t('home.recentSignatures.storedNote')}</span>
+                        <span aria-hidden="true">·</span>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingClear(true)}
+                          className="font-medium text-text-secondary hover:text-error-text hover:underline"
+                        >
+                          {t('home.recentSignatures.clearHistory')}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="mt-2 flex flex-wrap justify-center gap-2">
-                  {recentSignatures.map((entry) => (
+                {/* Phones: one swipeable row instead of 5 stacked chips
+                    pushing the upload card down; wraps centred from sm up. */}
+                <div className="-mx-4 mt-2.5 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:justify-center sm:overflow-visible sm:px-0 sm:pb-0">
+                  {recentSignatures.map((entry) => {
+                    // A round still waiting for the signer: clock + "Đang chờ
+                    // ký", no download (nothing signed yet). Click resumes it.
+                    const pending = isPendingSignature(entry);
+                    return (
                     <div
                       key={entry.code}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-white py-1.5 pl-3.5 pr-1.5 text-xs font-medium text-text-secondary shadow-sm"
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border bg-white py-1.5 pl-3.5 text-xs font-medium text-text-secondary shadow-sm ${
+                        pending ? 'border-amber-200 pr-3.5' : 'border-border-subtle pr-1.5'
+                      }`}
                     >
                       <button
                         type="button"
-                        onClick={() => handleViewRecent(entry)}
-                        title={entry.name}
-                        className="inline-flex max-w-[160px] items-center gap-1.5 truncate text-primary-strong hover:underline"
+                        onClick={() => void handleViewRecent(entry)}
+                        disabled={openingCode !== null}
+                        aria-busy={openingCode === entry.code}
+                        title={pending ? `${entry.name} · ${t('home.recentSignatures.pending')}` : entry.name}
+                        className="inline-flex items-center gap-1.5 text-primary-strong hover:underline disabled:cursor-wait"
                       >
-                        <Icon icon="lucide:history" className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">{entry.name}</span>
+                        {openingCode === entry.code ? (
+                          <ButtonSpinner />
+                        ) : (
+                          <Icon
+                            icon={pending ? 'lucide:clock' : 'lucide:history'}
+                            className={`h-3.5 w-3.5 shrink-0 ${pending ? 'text-amber-600' : ''}`}
+                          />
+                        )}
+                        <span className="max-w-[130px] truncate">{entry.name}</span>
+                        {pending && (
+                          <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold text-amber-700">
+                            {t('home.recentSignatures.pending')}
+                          </span>
+                        )}
                       </button>
+                      {!pending && (
                       <button
                         type="button"
                         onClick={() => handleDownloadRecent(entry)}
@@ -139,8 +293,10 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
                           <Icon icon="lucide:download" className="h-3.5 w-3.5" />
                         )}
                       </button>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 {recentDownloadError && (
                   <p className="mt-1.5 text-[11px] text-error-text">{recentDownloadError}</p>
@@ -149,28 +305,11 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
             )}
           </section>
 
-          <ol className="relative hidden w-full gap-6 text-center lg:grid lg:grid-cols-4">
-            <span
-              aria-hidden="true"
-              className="absolute left-[12.5%] right-[12.5%] top-[13px] hidden h-px bg-border-subtle lg:block"
-            />
-            {HOME_STEP_KEYS.map((key, index) => (
-              <li key={key} className="flex flex-col items-center">
-                <div className="relative z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white font-mono text-xs text-primary-strong ring-1 ring-primary/40">
-                  {String(index + 1).padStart(2, '0')}
-                </div>
-                <div className="mt-3 text-sm font-semibold text-text-strong">
-                  {t(`home.steps.${key}.title`)}
-                </div>
-              </li>
-            ))}
-          </ol>
-
           <div
             ref={signCardRef}
-            className="w-full"
+            className="w-full max-w-5xl"
           >
-            <div className="flex items-center justify-center gap-3 px-4 pb-3 pt-3.5">
+            <div className="flex items-center justify-center gap-3 px-4 pb-3">
               <div className="text-lg font-semibold text-text-strong">
                 {t('home.signCard.title')}
               </div>
@@ -180,7 +319,7 @@ export function HomeLanding({ onFileAccepted }: { onFileAccepted: (file: File) =
             </div>
 
             <div
-              className={`flex min-h-[156px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-5 text-center transition ${
+              className={`flex min-h-[220px] flex-col items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed px-6 py-8 text-center transition ${
                 validating
                   ? 'cursor-not-allowed border-border-subtle bg-surface-soft opacity-60'
                   : dragCounter > 0

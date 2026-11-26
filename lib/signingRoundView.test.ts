@@ -28,6 +28,8 @@ describe('maskCitizenId', () => {
 describe('isLookupCode', () => {
   it('accepts <origin>#<code> only', () => {
     expect(isLookupCode('kysoqr.com#3bLzsA')).toBe(true);
+    expect(isLookupCode('kysoqr.com#nm_DRT')).toBe(true);
+    expect(isLookupCode('kysoqr.com#a-b_cD')).toBe(true);
     expect(isLookupCode('3bLzsA')).toBe(false);
     expect(isLookupCode('kysoqr.com#3bL')).toBe(false);
     expect(isLookupCode('kysoqr.com#3bLzsA/../x')).toBe(false);

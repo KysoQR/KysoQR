@@ -49,7 +49,13 @@
     "recentSignatures": {
       "title": "5 most recent signatures",
       "downloadButton": "Download",
-      "downloadError": "Couldn't download this file (the download allowance may be used up). Please use a copy you already downloaded."
+      "downloadError": "Couldn't download this file (the download allowance may be used up). Please use a copy you already downloaded.",
+      "pending": "Waiting for signature",
+      "storedNote": "Kept in this browser for 30 minutes",
+      "clearHistory": "Clear history",
+      "clearConfirm": "Clear all signing history on this device?",
+      "clearConfirmYes": "Clear",
+      "clearConfirmNo": "Cancel"
     },
     "branding": {
       "eyebrow": "Casso ecosystem",
@@ -185,8 +191,7 @@
     "madeBy": "A product of"
   },
   "scrollCue": {
-    "landing": "See signing methods",
-    "scan": "No digital signature yet? Scroll down to register"
+    "landing": "See signing methods"
   },
   "steps": {
     "progressLabel": "Step {{current}} of {{total}}",
@@ -217,23 +222,28 @@
     "errorNotPdf": "Only PDF files are supported. Please choose a PDF document.",
     "errorTooLarge": "File is too large. Please select a PDF up to {{maxMb}} MB.",
     "requirements": "PDF only • up to {{maxMb}} MB",
-    "selectedLabel": "Ready to upload",
     "noFile": "No file selected yet. Choose a PDF to get started.",
-    "changeFile": "Change file"
+    "removeFile": "Remove file",
+    "pageCount_one": "{{count}} page",
+    "pageCount_other": "{{count}} pages"
   },
   "signerConfig": {
-    "signerKindLabel": "Who is signing?",
-    "signerKind": {
-      "individual": "Individual",
-      "enterprise": "Business"
+    "signTypeLabel": "Signature type",
+    "signType": {
+      "PERSONAL": "Personal",
+      "BUSINESS": "Business"
     },
+    "hintNone": "Not chosen: the signer picks personal or business signing in Cas ID.",
+    "hintPersonal": "Must be signed with a personal certificate. The signer cannot switch.",
+    "hintBusiness": "Must be signed with a business certificate. The signer cannot switch.",
     "cccdLabel": "Citizen ID (CCCD)",
-    "optionalNotice": "Enter details to send the signing request to Cas ID.",
-    "enterpriseTaxCodeRequired": "A tax code (MST, CCCD) is required to sign as an enterprise.",
+    "cccdHint": "Enter the CCCD to receive the signing notification in Cas ID",
     "fullNameLabel": "Signer's full name",
     "fullNamePlaceholder": "NGUYEN VAN A",
     "taxCodeLabel": "Tax code (MST)",
     "taxCodeHint": "10 digits, optionally followed by a 3-digit branch code.",
+    "taxCodeEmptyHint": "Empty: the signer may use the certificate of any business they hold.",
+    "taxCodeFilledHint": "The signer must use the certificate of the business with tax code {{taxCode}}.",
     "organizationLabel": "Company name",
     "organizationPlaceholder": "Company name as registered",
     "representativeLabel": "Legal representative",
@@ -260,19 +270,10 @@
       },
       "videoTitle": "How to register a CAS CERT certificate in the Cas ID app"
     },
-    "title": "Scan QR (Permission)",
-    "subtitle": "Authorize signing this document via your Cas ID app.",
     "instruction": "Ask the signer to scan this QR code with the Cas ID app and approve the signing request.",
-    "caption": "Scan with Cas ID app",
     "syncStatus": "Refresh status",
-    "back": "Back to edit",
-    "qrPayload": "QR payload:",
-    "status": "Signing status",
     "waiting": "Waiting for the signer to scan…",
     "accepted": "Accepted – finishing signing in the background…",
-    "rejected": "Signing was rejected.",
-    "failed": "Signing failed due to a technical error. Please try again.",
-    "expired": "This signing session expired. Please start over.",
     "statusError": "We could not refresh the signing status.",
     "expiresIn": "Expires in {{time}}",
     "qrRenderFailed": "Failed to render QR.",
@@ -280,25 +281,24 @@
     "linkLabel": "link:",
     "copyLink": "Copy link",
     "copied": "Copied!",
-    "tip": "Open Cas ID to scan the QR for signing permission, or tap the notification sent to your Cas ID app. No CAS ID yet? Watch the registration video below.",
     "aria": {
       "qrCode": "QR code"
-    }
+    },
+    "dialogTitle": "Scan the QR code with Cas ID to sign",
+    "casCertHint": "No digital certificate yet?",
+    "casCertLink": "See how to register for Cas Cert",
+    "qrUnavailable": "This round's QR code is no longer available. Create a new signing request."
   },
   "sign": {
     "needUploadForPreview": "Upload a PDF to preview and place the signature.",
     "submit": "Sign document",
     "renderingPreview": "Rendering preview…",
-    "clickOrDrag": "Scroll to browse pages · click \"Choose signature position\" then click where to place it",
-    "placingNewFieldHint": "Click anywhere on the PDF to move the signature box, or leave it if this spot works.",
     "addField": "Choose signature position",
-    "addFirstFieldHint": "No box yet — add one when you are ready to place the signature.",
     "removeField": "Remove this box",
     "removeFieldShort": "Remove",
     "dragToMove": "Drag to move",
     "fieldLabel": "Signature #{{n}}",
     "fieldSubLabel": "Signer approves in Cas ID",
-    "fieldCounter": "{{total}} boxes · this page {{onPage}}",
     "checkingSignatures": "Verifying signatures…",
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
@@ -306,7 +306,9 @@
       "signaturePlacement": "Signature placement",
       "resizeField": "Resize signature box",
       "pdfPreview": "PDF page preview"
-    }
+    },
+    "placeFieldFirstHint": "Click \"Choose signature position\" to place a signature box on the PDF, then fill in the signer details here.",
+    "goToSignerPane": "Go to signing"
   },
   "done": {
     "title": "Signed Document",
@@ -329,6 +331,7 @@
   "signingRound": {
     "notFound": "Verification code not found.",
     "signedAt": "Signed at",
+    "popupTitle": "Signing details",
     "verdict": {
       "validTitle": "Signature is valid",
       "validNote": "The signing round completed, the certificate is valid, and the document hasn't changed since it was signed.",
@@ -431,11 +434,7 @@
   },
   "signatureHistory": {
     "title": "Signature history",
-    "subtitle_one": "This document already has {{count}} existing digital signature.",
-    "subtitle_other": "This document already has {{count}} existing digital signatures.",
-    "closeAriaLabel": "Close signature history",
     "chain": {
-      "title": "Certificate chain",
       "ca": "Issuing CA",
       "leaf": "Signer certificate",
       "serial": "Serial number",
@@ -448,6 +447,59 @@
         "revoked": "Certificate HAS BEEN REVOKED",
         "unavailableWithUrl": "Could not be checked"
       }
+    },
+    "existingTitle": "Existing signatures in this file",
+    "existingEmpty": "This file has no digital signatures yet.",
+    "newFieldsTitle": "Signature boxes added",
+    "newFieldsEmpty": "No signature boxes yet. Click \"Choose signature position\" to add one.",
+    "invalid": "Invalid",
+    "certInfo": "Certificate details",
+    "reasonTitle": "Why this signature is invalid",
+    "technicalDetail": "Technical detail",
+    "reasons": {
+      "ROOT_NOT_TRUSTED": "The certificate was issued by an organization (root CA) that is not on the trusted root CA list, e.g. a CA used for testing.",
+      "CONTENT_DIGEST_MISMATCH": "The PDF content was changed after signing and no longer matches what was signed.",
+      "CHAIN_VALIDATION_FAILED": "The certificate chain is missing or cannot be verified up to its issuer.",
+      "SIGNATURE_INVALID": "The signature does not match the certificate; cryptographic verification failed.",
+      "TRUST_STORE_NOT_CONFIGURED": "The server has no trusted root CA list to check against, so this signature could not be verified.",
+      "UNSUPPORTED_SUBFILTER": "The signature format in this PDF is not supported yet, so the signature could not be verified.",
+      "UNSUPPORTED_ALGORITHM": "The certificate key algorithm is not supported yet, so the signature could not be verified."
     }
+  },
+  "workspace": {
+    "signerPane": "Signing details"
+  },
+  "review": {
+    "title": "Signing details",
+    "signedBadge": "Signed successfully",
+    "signedAt": "Signed at",
+    "signer": "Signer",
+    "authMethod": "Method",
+    "viewDetails": "View signing details",
+    "download": "Download document",
+    "continueSigning": "Sign again"
+  },
+  "signFailed": {
+    "rejectedNote": "The signing request was declined in the Cas ID app, so the document was not signed. You can send the request again.",
+    "expiredNote": "The QR code expired before the signer confirmed, so the document was not signed. Create a new signing request.",
+    "failedNote": "A technical error occurred while signing, so the document was not signed. Please try again."
+  },
+  "signStatus": {
+    "title": "Status",
+    "pending": "Waiting for signature",
+    "accepted": "Signer confirmed, finishing…",
+    "rejected": "Declined",
+    "expired": "Expired",
+    "failed": "Signing failed",
+    "pendingNote": "The signer scans the QR code with the Cas ID app. This page updates automatically.",
+    "reopenQr": "Show QR code again",
+    "newRequest": "New signing request",
+    "retry": "Sign again",
+    "signNewDocument": "Sign a new document"
+  },
+  "signFailedNotice": {
+    "rejectedTitle": "The signing request was declined",
+    "expiredTitle": "The signing request expired",
+    "failedTitle": "Signing failed"
   }
 }
