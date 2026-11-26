@@ -70,7 +70,7 @@ export function HomeLanding({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecentSignatures(getRecentSignatures());
-    // Housekeeping on every visit: drop entries past the 7-day TTL, pending
+    // Housekeeping on every visit: drop entries past the 30-minute TTL, pending
     // rounds whose QR expired, expired download keys, and PDFs nothing
     // refers to any more (lib/browserHistory.ts).
     void cleanupBrowserStorage().then(() => setRecentSignatures(getRecentSignatures()));

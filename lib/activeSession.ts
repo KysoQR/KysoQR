@@ -15,6 +15,8 @@ import type { SignatureFieldProps } from './domain/SignatureField';
 
 import { SESSION_KEYS, getSessionItem, removeSessionItem, setSessionItem } from './signingSessionStorage';
 
+import { RECENT_TTL_MS } from './recentSignatures';
+
 const STORAGE_KEY = SESSION_KEYS.activeSession;
 
 export interface ActiveSession {
@@ -29,7 +31,10 @@ export interface ActiveSession {
   signatureFields?: SignatureFieldProps[];
 }
 
-export function getActiveSession(): ActiveSession | null {
+/** The session on screen, or `null` -- also once it is older than the same
+ * 30-minute TTL as the recent list (then it is cleared too), so a reload
+ * after that lands on the home page instead of reopening it. */
+export function getActiveSession(now = Date.now()): ActiveSession | null {
   try {
     const raw = getSessionItem(STORAGE_KEY);
     if (!raw) return null;
@@ -37,6 +42,12 @@ export function getActiveSession(): ActiveSession | null {
     if (!value || typeof value !== 'object') return null;
     const v = value as Record<string, unknown>;
     if ((v.kind !== 'signed' && v.kind !== 'failed') || typeof v.code !== 'string' || typeof v.name !== 'string') {
+      return null;
+    }
+    // No timestamp = saved by an older version: treat as expired.
+    const savedAt = typeof v.savedAt === 'string' ? new Date(v.savedAt).getTime() : NaN;
+    if (!Number.isFinite(savedAt) || now - savedAt > RECENT_TTL_MS) {
+      removeSessionItem(STORAGE_KEY);
       return null;
     }
     return {
@@ -54,7 +65,7 @@ export function getActiveSession(): ActiveSession | null {
 }
 
 export function setActiveSession(session: ActiveSession): void {
-  setSessionItem(STORAGE_KEY, JSON.stringify(session));
+  setSessionItem(STORAGE_KEY, JSON.stringify({ ...session, savedAt: new Date().toISOString() }));
 }
 
 export function clearActiveSession(): void {

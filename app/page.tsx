@@ -7,6 +7,7 @@ import { SigningWizard } from '@/components/SigningWizard';
 import type { RecentSignature } from '@/lib/recentSignatures';
 import { getActiveSession } from '@/lib/activeSession';
 import { SESSION_KEYS, getSessionItem } from '@/lib/signingSessionStorage';
+import { cleanupBrowserStorage } from '@/lib/browserHistory';
 
 /**
  * `/` — matches x-sign-web's real routing: a marketing landing page
@@ -34,6 +35,9 @@ export default function Page() {
   const [entryReview, setEntryReview] = useState<RecentSignature | null>(null);
 
   useEffect(() => {
+    // Whatever page the app opens on: delete what is past the 30-minute TTL
+    // (recent list, stored PDFs, expired session) -- see lib/browserHistory.ts.
+    void cleanupBrowserStorage();
     // This tab's round only (sessionStorage): F5 reopens it, a new tab or a
     // fresh visit starts on the home page.
     const savedId = getSessionItem(SESSION_KEYS.signRequestId);
