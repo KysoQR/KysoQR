@@ -513,7 +513,7 @@ paths:
 
         The code is printed on the PDF, so anyone holding the file can look it up: the response holds only the fields listed
         in the schema (allow-list), a citizen ID is masked to its last 4 digits (a `MST:` tax code is kept), and `device` keeps
-        only `model`. A code of the wrong shape (must be `<prefix>#<code>`, e.g. `kysoqr.com#3bLzsA`) returns
+        only `model`. A code of the wrong shape (must be `<prefix>#<code>`, e.g. `kysoqr.com#3bLzsA`; the code part is 6–32 characters of letters, digits, `_` and `-`, e.g. `kysoqr.com#nm_DRT`) returns
         `signingRound: null` without calling CAS.
 
         Source: `app/api/verify/signing-round/[orgIdSigned]/route.ts`, `lib/cas/CasProvider.ts` (`SigningRoundDetail`).
