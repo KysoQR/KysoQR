@@ -329,6 +329,7 @@
   "signingRound": {
     "notFound": "Verification code not found.",
     "signedAt": "Signed at",
+    "popupTitle": "Signing details",
     "verdict": {
       "validTitle": "Signature is valid",
       "validNote": "The signing round completed, the certificate is valid, and the document hasn't changed since it was signed.",
@@ -448,6 +449,19 @@
         "revoked": "Certificate HAS BEEN REVOKED",
         "unavailableWithUrl": "Could not be checked"
       }
+    },
+    "invalid": "Invalid",
+    "certInfo": "Certificate details",
+    "reasonTitle": "Why this signature is invalid",
+    "technicalDetail": "Technical detail",
+    "reasons": {
+      "ROOT_NOT_TRUSTED": "The certificate was issued by an organization (root CA) that is not on the trusted root CA list, e.g. a CA used for testing.",
+      "CONTENT_DIGEST_MISMATCH": "The PDF content was changed after signing and no longer matches what was signed.",
+      "CHAIN_VALIDATION_FAILED": "The certificate chain is missing or cannot be verified up to its issuer.",
+      "SIGNATURE_INVALID": "The signature does not match the certificate; cryptographic verification failed.",
+      "TRUST_STORE_NOT_CONFIGURED": "The server has no trusted root CA list to check against, so this signature could not be verified.",
+      "UNSUPPORTED_SUBFILTER": "The signature format in this PDF is not supported yet, so the signature could not be verified.",
+      "UNSUPPORTED_ALGORITHM": "The certificate key algorithm is not supported yet, so the signature could not be verified."
     }
   }
 }

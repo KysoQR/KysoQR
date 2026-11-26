@@ -1,21 +1,76 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import type { ChainCertInfo } from '@/lib/verification/certChainVerifier';
 import type { RevocationCheckResult } from '@/lib/verification/revocationChecker';
-import type {
-  VerificationResult,
-  VerificationStatus,
-} from '@/lib/verification/verifyPdfSignatures';
+import type { VerificationResult } from '@/lib/verification/verifyPdfSignatures';
 
 /**
  * One signature's verification outcome — status chip, signed-by/signed-at,
- * content-integrity line, expandable certificate-chain detail. Extracted out
- * of `SignatureHistorySidebar.tsx` (where it originated) so both the sidebar
- * and the standalone `/verify` page render it identically.
+ * content-integrity line, and a button opening the certificate-chain detail
+ * in a popup (it used to expand inline, which was cramped in the narrow
+ * history pane and pushed everything below it down). Extracted out of
+ * `SignatureHistorySidebar.tsx`, where it is rendered.
  */
+
+/**
+ * Popup for the certificate detail -- same look as the app's other modals
+ * (SignRequestErrorModal). Portaled to <body> so the history pane's
+ * `overflow-hidden` frame can't clip it. Closes on Esc, backdrop click, or X.
+ */
+function CertificateDialog({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  // Focus on open so Esc works right away.
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
+
+  return createPortal(
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 outline-none"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-border-subtle bg-white shadow-xl">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-5 py-3">
+          <h2 className="text-sm font-semibold text-text-main">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-text-muted hover:bg-gray-100 hover:text-text-main"
+          >
+            <Icon icon="lucide:x" className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="overflow-y-auto px-5 py-4 text-xs text-text-secondary">{children}</div>
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 function formatValidity(from: string | undefined, to: string | undefined): string | null {
   if (!from && !to) return null;
@@ -150,51 +205,13 @@ function CertificateChainDetail({ chain }: { chain: ChainCertInfo[] }) {
   );
 }
 
-export const STATUS_STYLES: Record<
-  VerificationStatus,
-  { chip: string; icon: string; labelKey: string }
-> = {
-  SIGNED_VALID: {
-    chip: 'bg-green-100 text-green-600',
-    icon: 'lucide:check-circle-2',
-    labelKey: 'verify.shortLabels.SIGNED_VALID',
-  },
-  ROOT_NOT_TRUSTED: {
-    chip: 'bg-amber-100 text-amber-700',
-    icon: 'lucide:shield-alert',
-    labelKey: 'verify.shortLabels.ROOT_NOT_TRUSTED',
-  },
-  CONTENT_DIGEST_MISMATCH: {
-    chip: 'bg-red-100 text-red-600',
-    icon: 'lucide:file-warning',
-    labelKey: 'verify.shortLabels.CONTENT_DIGEST_MISMATCH',
-  },
-  CHAIN_VALIDATION_FAILED: {
-    chip: 'bg-red-100 text-red-600',
-    icon: 'lucide:link-2-off',
-    labelKey: 'verify.shortLabels.CHAIN_VALIDATION_FAILED',
-  },
-  SIGNATURE_INVALID: {
-    chip: 'bg-red-100 text-red-600',
-    icon: 'lucide:alert-triangle',
-    labelKey: 'verify.shortLabels.SIGNATURE_INVALID',
-  },
-  TRUST_STORE_NOT_CONFIGURED: {
-    chip: 'bg-gray-100 text-gray-600',
-    icon: 'lucide:server-off',
-    labelKey: 'verify.shortLabels.TRUST_STORE_NOT_CONFIGURED',
-  },
-  UNSUPPORTED_SUBFILTER: {
-    chip: 'bg-gray-100 text-gray-600',
-    icon: 'lucide:file-question',
-    labelKey: 'verify.shortLabels.UNSUPPORTED_SUBFILTER',
-  },
-  UNSUPPORTED_ALGORITHM: {
-    chip: 'bg-gray-100 text-gray-600',
-    icon: 'lucide:file-question',
-    labelKey: 'verify.shortLabels.UNSUPPORTED_ALGORITHM',
-  },
-};
+/**
+ * Only 2 outcomes are shown on the card: "Hợp lệ" (green) or "Không hợp
+ * lệ" (red) -- per explicit request; the specific reason (e.g. "Root CA
+ * chưa được tin cậy") moved into the certificate popup.
+ */
+const VALID_CHIP = { chip: 'bg-green-100 text-green-600', icon: 'lucide:check-circle-2' };
+const INVALID_CHIP = { chip: 'bg-red-100 text-red-600', icon: 'lucide:x-circle' };
 
 export function VerificationResultCard({
   result,
@@ -204,7 +221,9 @@ export function VerificationResultCard({
   index: number;
 }) {
   const { t } = useTranslation();
-  const style = STATUS_STYLES[result.status];
+  const isValid = result.status === 'SIGNED_VALID';
+  const style = isValid ? VALID_CHIP : INVALID_CHIP;
+  const signatureLabel = t('verify.signatureNumber', { number: result.position ?? index + 1 });
   const signedAt = formatSignedAt(result.signedAt);
   const signedByName = extractCommonName(result.certificate?.subject);
 
@@ -215,14 +234,12 @@ export function VerificationResultCard({
   return (
     <div className="py-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-text-main">
-          {t('verify.signatureNumber', { number: result.position ?? index + 1 })}
-        </span>
+        <span className="text-xs font-semibold text-text-main">{signatureLabel}</span>
         <span
           className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${style.chip}`}
         >
           <Icon icon={style.icon} className="h-3 w-3" />
-          {t(style.labelKey)}
+          {isValid ? t('verify.shortLabels.SIGNED_VALID') : t('signatureHistory.invalid')}
         </span>
       </div>
 
@@ -249,42 +266,46 @@ export function VerificationResultCard({
         </div>
       )}
 
-      {hasChain ? (
-        <div className="mt-2 text-xs text-text-secondary">
+      {/* Also shown for an invalid signature without any certificate info
+          (e.g. an unsupported format), so its reason is still reachable. */}
+      {(hasChain || hasPlainCertificate || !isValid) && (
+        <div className="mt-2 text-xs">
           <button
             type="button"
-            onClick={() => setOpen((o) => !o)}
-            aria-expanded={open}
-            className="flex select-none items-center gap-1 text-primary-strong"
+            onClick={() => setOpen(true)}
+            aria-haspopup="dialog"
+            className="inline-flex select-none items-center gap-1 text-primary-strong hover:underline"
           >
-            {t('signatureHistory.chain.title')}
-            <span className={`text-gray-400 transition ${open ? 'rotate-180' : ''}`}>▾</span>
+            {t('signatureHistory.certInfo')}
+            <Icon icon="lucide:maximize-2" className="h-3 w-3" />
           </button>
-          {open && (
-            <>
-              <CertificateChainDetail chain={result.certificateChain!} />
-              {result.certificateChainRootNotInTrustStore && (
-                <div className="mt-1.5 rounded-md bg-error-bg px-2 py-1 text-[11px] text-error-text">
-                  {t('signatureHistory.chain.rootNotTrusted')}
-                </div>
-              )}
-            </>
-          )}
         </div>
-      ) : (
-        hasPlainCertificate && (
-          <div className="mt-2 text-xs text-text-secondary">
-            <button
-              type="button"
-              onClick={() => setOpen((o) => !o)}
-              aria-expanded={open}
-              className="flex select-none items-center gap-1 text-primary-strong"
-            >
-              {t('verify.certificate')}
-              <span className={`text-gray-400 transition ${open ? 'rotate-180' : ''}`}>▾</span>
-            </button>
-            {open && (
-              <div className="mt-1.5 space-y-1 pl-1">
+      )}
+
+      {open && (
+        <CertificateDialog
+          title={`${t('signatureHistory.certInfo')} · ${signatureLabel}`}
+          onClose={() => setOpen(false)}
+        >
+          {!isValid && (
+            <div className="mb-4 rounded-lg border border-error-border bg-error-bg px-3 py-2.5 text-error-text">
+              <p className="flex items-center gap-1.5 text-xs font-semibold">
+                <Icon icon="lucide:x-circle" className="h-4 w-4 shrink-0" />
+                {t('signatureHistory.reasonTitle')}: {t(`verify.shortLabels.${result.status}`)}
+              </p>
+              <p className="mt-1 text-xs">{t(`signatureHistory.reasons.${result.status}`)}</p>
+              {result.message && (
+                <p className="mt-1.5 break-words text-[11px] text-text-muted">
+                  {t('signatureHistory.technicalDetail')}: {result.message}
+                </p>
+              )}
+            </div>
+          )}
+          {hasChain ? (
+            <CertificateChainDetail chain={result.certificateChain!} />
+          ) : (
+            hasPlainCertificate && (
+              <div className="space-y-1">
                 {result.certificate?.subject && (
                   <div>
                     <span className="text-text-muted">{t('verify.subject')}: </span>
@@ -298,9 +319,9 @@ export function VerificationResultCard({
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        )
+            )
+          )}
+        </CertificateDialog>
       )}
     </div>
   );

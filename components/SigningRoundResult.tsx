@@ -71,15 +71,15 @@ function Panel({
   right?: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-border-subtle bg-white">
-      <div className="flex items-center justify-between gap-3 border-b border-border-subtle px-5 py-4">
-        <div className="flex items-center gap-2.5">
-          <Icon icon={icon} className="h-[17px] w-[17px] text-text-main" />
-          <span className="text-[14.5px] font-semibold">{title}</span>
+    <div className="overflow-hidden rounded-xl border border-border-subtle bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-border-subtle px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Icon icon={icon} className="h-4 w-4 text-text-main" />
+          <span className="text-sm font-semibold">{title}</span>
         </div>
         {right}
       </div>
-      <div className="px-5 py-1.5">{children}</div>
+      <div className="px-4 py-1">{children}</div>
     </div>
   );
 }
@@ -122,39 +122,39 @@ export function SigningRoundResult({ data }: Props) {
   ];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {/* Verdict */}
       <div
-        className={`flex flex-wrap items-start justify-between gap-6 rounded-2xl border p-6 ${
+        className={`flex flex-wrap items-start justify-between gap-4 rounded-xl border p-4 ${
           isValid ? 'border-border-subtle bg-surface-soft' : 'border-error-border bg-error-bg'
         }`}
       >
-        <div className="flex flex-1 items-start gap-4">
+        <div className="flex flex-1 items-start gap-3">
           <div
-            className={`flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full text-white ${
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white ${
               isValid ? 'bg-primary' : 'bg-error-text'
             }`}
           >
             <Icon
               icon={isValid ? 'lucide:shield-check' : 'lucide:file-warning'}
-              className="h-[26px] w-[26px]"
+              className="h-5 w-5"
             />
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
             <div
-              className={`text-[22px] font-bold tracking-tight ${isValid ? 'text-primary-strong' : 'text-error-text'}`}
+              className={`text-lg font-bold leading-tight tracking-tight ${isValid ? 'text-primary-strong' : 'text-error-text'}`}
             >
               {isValid
                 ? t('signingRound.verdict.validTitle')
                 : t('signingRound.verdict.invalidTitle')}
             </div>
-            <p className="max-w-lg text-sm text-text-secondary">
+            <p className="text-[13px] text-text-secondary">
               {isValid
                 ? t('signingRound.verdict.validNote')
                 : t('signingRound.verdict.invalidNote')}
             </p>
             {data.signedAt && (
-              <div className="mt-1 flex items-center gap-2 text-[13px] text-text-secondary">
+              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-text-secondary">
                 <Icon icon="lucide:clock" className="h-3.5 w-3.5" />
                 <span>
                   {t('signingRound.signedAt')}{' '}
@@ -167,18 +167,18 @@ export function SigningRoundResult({ data }: Props) {
       </div>
 
       {/* Status tiles */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {tiles.map((tile) => (
           <div
             key={tile.label}
-            className="flex flex-col gap-2.5 rounded-2xl border border-border-subtle bg-white px-5 py-4.5"
+            className="flex flex-col gap-1.5 rounded-xl border border-border-subtle bg-white p-4"
           >
             <div className="flex items-center gap-2 text-xs font-medium text-text-secondary">
               <Icon icon={tile.icon} className="h-[15px] w-[15px]" />
               <span>{tile.label}</span>
             </div>
             <div
-              className={`text-[16px] font-semibold leading-snug ${tile.ok ? 'text-primary-strong' : 'text-error-text'}`}
+              className={`text-[15px] font-semibold leading-snug ${tile.ok ? 'text-primary-strong' : 'text-error-text'}`}
             >
               {tile.value}
             </div>
@@ -188,7 +188,7 @@ export function SigningRoundResult({ data }: Props) {
       </div>
 
       {/* Signer + device */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Panel icon="lucide:user-round-check" title={t('signingRound.signer.title')}>
           <Row
             label={t('signingRound.signer.displayName')}
