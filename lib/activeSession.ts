@@ -13,7 +13,9 @@
 
 import type { SignatureFieldProps } from './domain/SignatureField';
 
-const STORAGE_KEY = 'kysoqr.activeSession';
+import { SESSION_KEYS, getSessionItem, removeSessionItem, setSessionItem } from './signingSessionStorage';
+
+const STORAGE_KEY = SESSION_KEYS.activeSession;
 
 export interface ActiveSession {
   kind: 'signed' | 'failed';
@@ -28,9 +30,8 @@ export interface ActiveSession {
 }
 
 export function getActiveSession(): ActiveSession | null {
-  if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = getSessionItem(STORAGE_KEY);
     if (!raw) return null;
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== 'object') return null;
@@ -53,19 +54,9 @@ export function getActiveSession(): ActiveSession | null {
 }
 
 export function setActiveSession(session: ActiveSession): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-  } catch {
-    // non-critical
-  }
+  setSessionItem(STORAGE_KEY, JSON.stringify(session));
 }
 
 export function clearActiveSession(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // non-critical
-  }
+  removeSessionItem(STORAGE_KEY);
 }

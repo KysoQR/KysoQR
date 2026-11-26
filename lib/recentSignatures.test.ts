@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  RECENT_TTL_MS,
   addRecentSignature,
+  cleanupRecentSignatures,
+  forgetIdentityKey,
   getRecentSignatures,
   pendingCode,
   removeRecentSignature,
   replaceRecentSignature,
+  updateRecentSignature,
   type RecentSignature,
 } from './recentSignatures';
 
@@ -21,18 +25,31 @@ beforeEach(() => {
   };
 });
 
-const signed = (code: string): RecentSignature => ({
+const iso = (msFromNow: number) => new Date(Date.now() + msFromNow).toISOString();
+const HOUR = 60 * 60 * 1000;
+const saved = () => JSON.parse(store.get('kysoqr.recentSignatures') ?? '[]') as RecentSignature[];
+
+const signed = (code: string, extra: Partial<RecentSignature> = {}): RecentSignature => ({
   code,
   name: `${code}.pdf`,
-  signedAt: '2026-11-25T00:00:00Z',
+  signedAt: iso(-HOUR),
   status: 'signed',
+  ...extra,
+});
+const pending = (id: string, extra: Partial<RecentSignature> = {}): RecentSignature => ({
+  code: pendingCode(id),
+  name: `${id}.pdf`,
+  signedAt: iso(-60_000),
+  status: 'pending',
+  signRequestId: id,
+  ...extra,
 });
 
 describe('recentSignatures', () => {
   it('reads entries saved before `status` existed (treated as signed)', () => {
     store.set(
       'kysoqr.recentSignatures',
-      JSON.stringify([{ code: 'kysoqr.com#AAAAAA', name: 'a.pdf', signedAt: '2026-01-01T00:00:00Z' }])
+      JSON.stringify([{ code: 'kysoqr.com#AAAAAA', name: 'a.pdf', signedAt: iso(-HOUR) }])
     );
     const [entry] = getRecentSignatures();
     expect(entry?.code).toBe('kysoqr.com#AAAAAA');
@@ -41,15 +58,7 @@ describe('recentSignatures', () => {
 
   it('replaces a pending round in place once signed, without duplicates', () => {
     addRecentSignature(signed('kysoqr.com#OLD111'));
-    const pending: RecentSignature = {
-      code: pendingCode('req-1'),
-      name: 'x.pdf',
-      signedAt: '2026-11-25T00:00:00Z',
-      status: 'pending',
-      signRequestId: 'req-1',
-      qrContent: 'https://example.test/qr',
-    };
-    addRecentSignature(pending);
+    addRecentSignature(pending('req-1', { qrContent: 'https://example.test/qr' }));
     replaceRecentSignature(pendingCode('req-1'), signed('kysoqr.com#NEW222'));
     expect(getRecentSignatures().map((e) => e.code)).toEqual(['kysoqr.com#NEW222', 'kysoqr.com#OLD111']);
   });
@@ -66,16 +75,52 @@ describe('recentSignatures', () => {
     expect(getRecentSignatures().map((e) => e.code)).toEqual(['kysoqr.com#B22222']);
   });
 
-  it('keeps a pending round\'s signature boxes', () => {
+  it("keeps a pending round's signature boxes", () => {
     const fields = [{ page: 2, xRatio: 0.5, yRatio: 0.4, widthRatio: 0.3, heightRatio: 0.1 }];
-    addRecentSignature({
-      code: pendingCode('req-2'),
-      name: 'y.pdf',
-      signedAt: '2026-11-25T00:00:00Z',
-      status: 'pending',
-      signRequestId: 'req-2',
-      signatureFields: fields,
-    });
+    addRecentSignature(pending('req-2', { signatureFields: fields }));
     expect(getRecentSignatures()[0]?.signatureFields).toEqual(fields);
+  });
+
+  it('hides entries past the 7-day TTL, and cleanup drops them from storage', () => {
+    store.set(
+      'kysoqr.recentSignatures',
+      JSON.stringify([
+        signed('kysoqr.com#NEW000'),
+        signed('kysoqr.com#OLD000', { signedAt: iso(-RECENT_TTL_MS - HOUR) }),
+      ])
+    );
+    expect(getRecentSignatures().map((e) => e.code)).toEqual(['kysoqr.com#NEW000']);
+    expect(saved()).toHaveLength(2);
+    cleanupRecentSignatures();
+    expect(saved().map((e) => e.code)).toEqual(['kysoqr.com#NEW000']);
+  });
+
+  it('drops a pending round past its QR expiry, or after 24h without one', () => {
+    addRecentSignature(pending('expired', { expiresAt: iso(-1000) }));
+    addRecentSignature(pending('stale', { signedAt: iso(-25 * HOUR) }));
+    addRecentSignature(pending('live', { expiresAt: iso(5 * 60_000) }));
+    expect(getRecentSignatures().map((e) => e.code)).toEqual([pendingCode('live')]);
+  });
+
+  it('drops an expired identityKey but keeps the entry', () => {
+    addRecentSignature(signed('kysoqr.com#KEY000', { identityKey: 'ik', identityKeyExpiresAt: iso(-1000) }));
+    const [entry] = getRecentSignatures();
+    expect(entry?.code).toBe('kysoqr.com#KEY000');
+    expect(entry?.identityKey).toBeUndefined();
+  });
+
+  it('forgetIdentityKey removes the key once the PDF is kept locally', () => {
+    addRecentSignature(signed('kysoqr.com#KEY111', { identityKey: 'ik', identityKeyExpiresAt: iso(HOUR) }));
+    forgetIdentityKey('kysoqr.com#KEY111');
+    expect(saved()[0]?.identityKey).toBeUndefined();
+    expect(saved()[0]?.identityKeyExpiresAt).toBeUndefined();
+  });
+
+  it('updateRecentSignature merges a patch (e.g. a pending expiry)', () => {
+    addRecentSignature(pending('req-3'));
+    const expiresAt = iso(5 * 60_000);
+    updateRecentSignature(pendingCode('req-3'), { expiresAt });
+    expect(saved()[0]?.expiresAt).toBe(expiresAt);
+    expect(saved()[0]?.code).toBe(pendingCode('req-3'));
   });
 });

@@ -49,7 +49,12 @@
       "title": "5 phiên ký gần nhất",
       "downloadButton": "Tải xuống",
       "downloadError": "Không tải được file này (có thể đã hết lượt tải). Vui lòng dùng bản đã tải trước đó.",
-      "pending": "Đang chờ ký"
+      "pending": "Đang chờ ký",
+      "storedNote": "Lưu trên trình duyệt này trong 7 ngày",
+      "clearHistory": "Xoá lịch sử",
+      "clearConfirm": "Xoá toàn bộ lịch sử ký trên máy này?",
+      "clearConfirmYes": "Xoá",
+      "clearConfirmNo": "Huỷ"
     },
     "branding": {
       "eyebrow": "Hệ sinh thái Casso",

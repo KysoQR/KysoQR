@@ -6,6 +6,7 @@ import { HomeLanding } from '@/components/HomeLanding';
 import { SigningWizard } from '@/components/SigningWizard';
 import type { RecentSignature } from '@/lib/recentSignatures';
 import { getActiveSession } from '@/lib/activeSession';
+import { SESSION_KEYS, getSessionItem } from '@/lib/signingSessionStorage';
 
 /**
  * `/` — matches x-sign-web's real routing: a marketing landing page
@@ -23,8 +24,6 @@ import { getActiveSession } from '@/lib/activeSession';
  */
 type View = 'home' | 'wizard';
 
-const LS_SIGN_REQUEST_ID = 'kysoqr.signRequestId';
-const LS_STATUS = 'kysoqr.status';
 const TERMINAL_STATUSES = new Set(['SIGNED', 'REJECTED', 'FAILED', 'EXPIRED']);
 
 export default function Page() {
@@ -35,9 +34,11 @@ export default function Page() {
   const [entryReview, setEntryReview] = useState<RecentSignature | null>(null);
 
   useEffect(() => {
-    const savedId = window.localStorage.getItem(LS_SIGN_REQUEST_ID);
-    const savedStatus = window.localStorage.getItem(LS_STATUS);
-    // Deliberate one-time resume check from localStorage (browser-only) after
+    // This tab's round only (sessionStorage): F5 reopens it, a new tab or a
+    // fresh visit starts on the home page.
+    const savedId = getSessionItem(SESSION_KEYS.signRequestId);
+    const savedStatus = getSessionItem(SESSION_KEYS.status);
+    // Deliberate one-time resume check from sessionStorage (browser-only) after
     // mount — a lazy useState initializer would run during SSR too and
     // mismatch on hydration, so a mount effect is the correct pattern here.
     // Also reopen a session whose result was on screen (signed / failed),
