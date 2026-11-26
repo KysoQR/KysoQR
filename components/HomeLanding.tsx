@@ -8,6 +8,7 @@ import Header from './Header';
 import Footer from './Footer';
 import { SIGNING_METHODS_SECTION_ID, SigningMethodsSection } from './home/SigningMethodsSection';
 import { ScrollCue } from './ScrollCue';
+import { HeaderSteps } from './signing/HeaderSteps';
 import { CasIdVideoGuide } from './signing/CasIdVideoGuide';
 import { LANDING_GUIDE_VIDEO_EMBED_URL } from '@/lib/branding/signingMethods';
 import { ButtonSpinner } from './signing/Spinners';
@@ -24,6 +25,7 @@ import { cleanupBrowserStorage, clearBrowserHistory } from '@/lib/browserHistory
 import { SESSION_KEYS, removeSessionItem, setSessionItem } from '@/lib/signingSessionStorage';
 
 const SUPPORTED_FILE_FORMATS = ['PDF'];
+const HOME_STEP_KEYS = ['upload', 'place', 'sign', 'download'] as const;
 
 /**
  * Ported from x-sign-web/src/features/home/HomePage.tsx. Adapted for the new
@@ -66,6 +68,7 @@ export function HomeLanding({
   // mount effect defers this until after that first render/hydration is
   // already committed, matching the same pattern this codebase already
   // uses for `SigningWizard.tsx`'s own `existingSignatures`.
+  const homeSteps = HOME_STEP_KEYS.map((key) => ({ key, label: t(`home.steps.${key}.title`) }));
   const [recentSignatures, setRecentSignatures] = useState<RecentSignature[]>([]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -179,16 +182,64 @@ export function HomeLanding({
             to sit between them is gone (the wizard's header already shows
             the steps), and the bottom padding keeps the floating ScrollCue
             ("Xem các phương thức ký") clear of the upload card. */}
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 px-4 pb-16 pt-10 sm:px-6 sm:pt-14">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 px-4 pb-16 pt-4 sm:px-6 sm:pt-6">
           <section className="w-full text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-text-strong sm:text-5xl">
               {t('home.title')}
             </h1>
 
+            {/* The 4 signing steps, same compact indicator as the wizard's
+                header (step 1 current: upload a PDF). */}
+            <div className="mt-4 flex justify-center">
+              <HeaderSteps steps={homeSteps} currentStepIndex={0} allLabelsFrom="md" />
+            </div>
+
             {recentSignatures.length > 0 && (
               <div className="mt-7">
-                <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                  {t('home.recentSignatures.title')}
+                {/* Label, then (same row, wrapping below it on phones) where
+                    these are kept and the way to clear them. */}
+                <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    {t('home.recentSignatures.title')}
+                  </div>
+                  <span aria-hidden="true" className="hidden text-[11px] text-text-muted sm:inline">·</span>
+                  {/* Where these live, for how long, and a way to wipe them
+                      (shared computers) -- lib/browserHistory.ts. */}
+                  <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-[11px] text-text-muted">
+                    {confirmingClear ? (
+                      <>
+                        <span>{t('home.recentSignatures.clearConfirm')}</span>
+                        <button
+                          type="button"
+                          onClick={() => void handleClearHistory()}
+                          className="font-semibold text-error-text hover:underline"
+                        >
+                          {t('home.recentSignatures.clearConfirmYes')}
+                        </button>
+                        <span aria-hidden="true">·</span>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingClear(false)}
+                          className="hover:text-text-main hover:underline"
+                        >
+                          {t('home.recentSignatures.clearConfirmNo')}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <Icon icon="lucide:hard-drive" className="h-3 w-3" />
+                        <span>{t('home.recentSignatures.storedNote')}</span>
+                        <span aria-hidden="true">·</span>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingClear(true)}
+                          className="font-medium text-text-secondary hover:text-error-text hover:underline"
+                        >
+                          {t('home.recentSignatures.clearHistory')}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
                 {/* Phones: one swipeable row instead of 5 stacked chips
                     pushing the upload card down; wraps centred from sm up. */}
@@ -250,43 +301,6 @@ export function HomeLanding({
                 {recentDownloadError && (
                   <p className="mt-1.5 text-[11px] text-error-text">{recentDownloadError}</p>
                 )}
-                {/* Where these live, for how long, and a way to wipe them
-                    (shared computers) -- lib/browserHistory.ts. */}
-                <div className="mt-2 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-[11px] text-text-muted">
-                  {confirmingClear ? (
-                    <>
-                      <span>{t('home.recentSignatures.clearConfirm')}</span>
-                      <button
-                        type="button"
-                        onClick={() => void handleClearHistory()}
-                        className="font-semibold text-error-text hover:underline"
-                      >
-                        {t('home.recentSignatures.clearConfirmYes')}
-                      </button>
-                      <span aria-hidden="true">·</span>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmingClear(false)}
-                        className="hover:text-text-main hover:underline"
-                      >
-                        {t('home.recentSignatures.clearConfirmNo')}
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <Icon icon="lucide:hard-drive" className="h-3 w-3" />
-                      <span>{t('home.recentSignatures.storedNote')}</span>
-                      <span aria-hidden="true">·</span>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmingClear(true)}
-                        className="font-medium text-text-secondary hover:text-error-text hover:underline"
-                      >
-                        {t('home.recentSignatures.clearHistory')}
-                      </button>
-                    </>
-                  )}
-                </div>
               </div>
             )}
           </section>
