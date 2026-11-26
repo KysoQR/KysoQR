@@ -23,6 +23,10 @@ export interface SubmitDocumentInput {
   /** 10..240 chars, no control characters — caller must normalize first. */
   documentName: string;
   organizationName?: string | null;
+  /** PERSONAL / BUSINESS: the signer must sign that way and can't switch in
+   * Cas ID. Omit to let the signer choose. */
+  signType?: 'PERSONAL' | 'BUSINESS' | null;
+  /** BUSINESS only: the signer must use THIS enterprise's certificate. */
   taxCode?: string | null;
   language?: 'vi' | 'en' | null;
   file: { buffer: Buffer; filename: string; contentType?: string };

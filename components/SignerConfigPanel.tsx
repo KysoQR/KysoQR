@@ -3,36 +3,42 @@
 import { useTranslation } from 'react-i18next';
 import { Icon } from '@iconify/react';
 import TextField from './TextField';
+import { SIGN_TYPES, type SignType } from '@/lib/domain/CasSignerConfig';
 
-export type SignerKind = 'individual' | 'enterprise';
+export type { SignType };
 
 export type CasSignerConfigValue = {
-  signerKind: SignerKind;
+  /** CAS `signType`: PERSONAL / BUSINESS forces how the signer signs in Cas
+   * ID (they can't switch); `null` = not sent, the signer chooses. */
+  signType: SignType | null;
   identificationNumber: string;
+  /** Only sent with BUSINESS; kept while switching so it's still there when
+   * the user switches back. */
   taxCode: string;
   organizationName: string;
   representativeName: string;
 };
 
-/** The form value after the signer kind changes. Both kinds use the CCCD (it
- * is what makes Cas ID push a notification), so it survives the switch;
- * everything else belongs to one kind only and starts empty. */
-export const switchSignerKind = (
-  value: CasSignerConfigValue,
-  kind: SignerKind
-): CasSignerConfigValue => ({
-  signerKind: kind,
-  identificationNumber: value.identificationNumber,
-  taxCode: '',
-  organizationName: '',
-  representativeName: '',
+const CCCD = /^\d{9}$|^\d{12}$/;
+const TAX_CODE = /^\d{10}(?:-\d{3})?$/;
+
+/** The form value after a sign-type button is pressed: pressing the active
+ * one clears the choice (back to "the signer chooses"). Typed values are
+ * kept either way. */
+export const toggleSignType = (value: CasSignerConfigValue, type: SignType): CasSignerConfigValue => ({
+  ...value,
+  signType: value.signType === type ? null : type,
 });
 
 /**
- * Simplified port of x-sign-web/src/features/intentSigning/SignerConfigPanel.tsx
- * — same fields/layout/copy, minus the IDKIT auto-fill-by-tax-code effect and
- * PDF-text-layer detected-identifier suggestions (IDKIT is not integrated in
- * v1 — signer types everything manually).
+ * Who is signing, mirroring CAS's `signType` (same contract as the Cas Sign
+ * app). Two toggles, none selected by default:
+ * - none: no fields -- the signer picks personal/business in Cas ID;
+ * - Cá nhân (PERSONAL): the CCCD;
+ * - Doanh nghiệp (BUSINESS): the CCCD + an optional tax code (empty = any
+ *   enterprise certificate, filled = that enterprise's).
+ * The CCCD is optional everywhere: empty signs by QR, filled also pushes a
+ * notification to that person's Cas ID.
  */
 export function SignerConfigPanel({
   value,
@@ -46,136 +52,103 @@ export function SignerConfigPanel({
   const { t } = useTranslation();
   const set = <K extends keyof CasSignerConfigValue>(key: K, next: CasSignerConfigValue[K]) =>
     onChange({ ...value, [key]: next });
-  const isEnterprise = value.signerKind === 'enterprise';
-
-  const changeSignerKind = (kind: SignerKind) => {
-    if (kind !== value.signerKind) onChange(switchSignerKind(value, kind));
-  };
+  const isBusiness = value.signType === 'BUSINESS';
 
   const cccdError =
-    value.identificationNumber && !/^\d{9}$|^\d{12}$/.test(value.identificationNumber)
+    value.identificationNumber && !CCCD.test(value.identificationNumber.trim())
       ? t('signerConfig.errors.cccd')
       : null;
-  // Shared by both kinds: an individual's own CCCD, or -- for an enterprise --
-  // the CCCD of the person signing on its behalf. Optional either way: empty
-  // means "sign by QR", filled means Cas ID also sends a notification.
-  const cccdField = (
-    <TextField
-      id="signer-cccd"
-      label={t('signerConfig.cccdLabel')}
-      value={value.identificationNumber}
-      onChange={(next) => set('identificationNumber', next)}
-      placeholder="123456789012"
-      inputMode="numeric"
-      disabled={disabled}
-      error={cccdError}
-    />
-  );
   const taxCodeTrimmed = value.taxCode.trim();
   const taxCodeError =
-    isEnterprise && taxCodeTrimmed && !/^\d{10}(?:-\d{3})?$/.test(taxCodeTrimmed)
+    isBusiness && taxCodeTrimmed && !TAX_CODE.test(taxCodeTrimmed)
       ? t('signerConfig.errors.taxCode')
       : null;
+  const hintKey =
+    value.signType === 'PERSONAL'
+      ? 'signerConfig.hintPersonal'
+      : isBusiness
+        ? 'signerConfig.hintBusiness'
+        : 'signerConfig.hintNone';
 
   return (
     <div className="space-y-2">
       <div>
         <span className="block text-xs font-medium text-text-main">
-          {t('signerConfig.signerKindLabel')}
+          {t('signerConfig.signTypeLabel')}
         </span>
+        {/* Toggle buttons rather than a radio group: none selected is a
+            valid state (the signer chooses), reached by pressing the active
+            one again. */}
         <div
-          role="radiogroup"
-          aria-label={t('signerConfig.signerKindLabel')}
+          role="group"
+          aria-label={t('signerConfig.signTypeLabel')}
           className="mt-1 grid grid-cols-2 gap-2"
         >
-          {(['individual', 'enterprise'] as SignerKind[]).map((kind) => {
-            const active = value.signerKind === kind;
+          {SIGN_TYPES.map((type) => {
+            const active = value.signType === type;
             return (
               <button
-                key={kind}
+                key={type}
                 type="button"
-                role="radio"
-                aria-checked={active}
+                aria-pressed={active}
                 disabled={disabled}
-                onClick={() => changeSignerKind(kind)}
-                className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
+                onClick={() => onChange(toggleSignType(value, type))}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
                   active
                     ? 'border-primary bg-surface-soft text-primary'
                     : 'border-border-subtle bg-white text-text-secondary hover:border-primary'
                 }`}
               >
-                {t(`signerConfig.signerKind.${kind}`)}
+                <Icon
+                  icon={type === 'BUSINESS' ? 'lucide:building-2' : 'lucide:user'}
+                  className="h-3.5 w-3.5"
+                />
+                {t(`signerConfig.signType.${type}`)}
               </button>
             );
           })}
         </div>
-        {/* One prominent line instead of a faint "Tuỳ chọn" badge on every
-            field: individuals may leave everything empty (QR-only), while an
-            enterprise signer must provide a tax code. */}
-        <p
-          className={`mt-1.5 flex items-start gap-1 text-xs ${
-            isEnterprise ? 'text-error-text' : 'text-primary-strong'
-          }`}
-        >
+        <p className="mt-1.5 flex items-start gap-1 text-xs text-primary-strong">
           <Icon icon="lucide:info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
-            {t(
-              isEnterprise
-                ? 'signerConfig.enterpriseTaxCodeRequired'
-                : 'signerConfig.optionalNotice'
-            )}
-          </span>
+          <span>{t(hintKey)}</span>
         </p>
       </div>
 
-      {isEnterprise ? (
-        <>
-          <TextField
-            id="signer-tax-code"
-            label={t('signerConfig.taxCodeLabel')}
-            value={value.taxCode}
-            onChange={(next) => set('taxCode', next)}
-            placeholder="1234567890"
-            inputMode="numeric"
-            disabled={disabled}
-            error={taxCodeError}
-            hint={t('signerConfig.taxCodeHint')}
-          />
-          {cccdField}
-          {/* <TextField
-            id="signer-organization"
-            label={t('signerConfig.organizationLabel')}
-            value={value.organizationName}
-            onChange={(next) => set('organizationName', next)}
-            disabled={disabled}
-            placeholder={t('signerConfig.organizationPlaceholder')}
-          /> */}
-          {/* <TextField
-            id="signer-representative"
-            label={t('signerConfig.representativeLabel')}
-            value={value.representativeName}
-            onChange={(next) => set('representativeName', next)}
-            disabled={disabled}
-            placeholder={t('signerConfig.representativePlaceholder')}
-          /> */}
-        </>
-      ) : (
-        <>
-          {cccdField}
-          {/* <TextField
-            id="signer-full-name"
-            label={t('signerConfig.fullNameLabel')}
-            value={value.representativeName}
-            onChange={(next) => set('representativeName', next)}
-            disabled={disabled}
-            placeholder={t('signerConfig.fullNamePlaceholder')}
-          /> */}
-        </>
+      {value.signType && (
+        <TextField
+          id="signer-cccd"
+          label={t('signerConfig.cccdLabel')}
+          value={value.identificationNumber}
+          onChange={(next) => set('identificationNumber', next)}
+          placeholder="123456789012"
+          inputMode="numeric"
+          disabled={disabled}
+          error={cccdError}
+          hint={t('signerConfig.cccdHint')}
+        />
       )}
 
-      {/* "Leave blank to sign by QR" only makes sense for an individual: an
-          enterprise signer is asked for the CCCD alongside the tax code. */}
-      {!isEnterprise && !value.identificationNumber && (
+      {isBusiness && (
+        <TextField
+          id="signer-tax-code"
+          label={t('signerConfig.taxCodeLabel')}
+          value={value.taxCode}
+          onChange={(next) => set('taxCode', next)}
+          placeholder="0123456789 / 0123456789-001"
+          inputMode="numeric"
+          disabled={disabled}
+          error={taxCodeError}
+          hint={
+            taxCodeTrimmed && !taxCodeError
+              ? t('signerConfig.taxCodeFilledHint', { taxCode: taxCodeTrimmed })
+              : t('signerConfig.taxCodeEmptyHint')
+          }
+        />
+      )}
+
+      {/* "Leave blank to sign by QR" -- whenever a CCCD field is shown and
+          still empty. */}
+      {value.signType && !value.identificationNumber.trim() && (
         <div className="rounded-md border border-warning-border bg-warning-bg px-3 py-1.5 text-[11px] text-warning-text">
           {t('signerConfig.noCccdWarning')}
         </div>
@@ -186,21 +159,18 @@ export function SignerConfigPanel({
 
 export default SignerConfigPanel;
 
-/** Ported from x-sign-web/src/features/documents/casSignerForm.ts.
- * For an individual nothing is REQUIRED -- real signer identity is confirmed
- * afterwards in the CAS ID app during the QR step (QR-only signing is a
- * deliberate, supported path), so only a CCCD that's PRESENT but malformed is
- * rejected. In THIS form an enterprise signer must provide BOTH a well-formed
- * tax code (MST) and the CCCD of the person signing for it, so Cas ID can
- * notify that person; "Ký" stays disabled until both are valid. The server
- * (`lib/domain/CasSignerConfig.ts`) still only requires the tax code, so API
- * clients that sign an enterprise request by QR keep working.
- * `organizationName`/`representativeName` are never checked: CAS's own submit
- * call only ever receives `organizationName` when non-empty (and never
- * `representativeName` at all). */
+/** Ported from x-sign-web/src/features/documents/casSignerForm.ts, updated
+ * for `signType`: nothing is REQUIRED -- identity is confirmed in the Cas ID
+ * app during the QR step and the tax code is optional even for BUSINESS --
+ * so only a value that is PRESENT but malformed keeps "Ký" disabled (the CCCD
+ * whenever a sign type is chosen, the tax code for BUSINESS only; hidden
+ * fields are not sent, see SigningWizard). Same rules as the server
+ * (`lib/domain/CasSignerConfig.ts`). */
 export const isCasSignerConfigValid = (config: CasSignerConfigValue): boolean => {
+  if (!config.signType) return true;
   const identification = config.identificationNumber.trim();
-  if (identification && !/^\d{9}$|^\d{12}$/.test(identification)) return false;
-  if (config.signerKind !== 'enterprise') return true;
-  return identification !== '' && /^\d{10}(?:-\d{3})?$/.test(config.taxCode.trim());
+  if (identification && !CCCD.test(identification)) return false;
+  if (config.signType !== 'BUSINESS') return true;
+  const taxCode = config.taxCode.trim();
+  return !taxCode || TAX_CODE.test(taxCode);
 };

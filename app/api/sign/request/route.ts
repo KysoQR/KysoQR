@@ -9,7 +9,8 @@ import { SignatureField, SignatureFieldValidationError } from '@/lib/domain/Sign
 import {
   CasSignerConfig,
   CasSignerConfigValidationError,
-  type SignerType,
+  isSignType,
+  type SignType,
 } from '@/lib/domain/CasSignerConfig';
 import { checkRateLimit, clientIpFromRequest, rateLimitedResponse } from '@/lib/rateLimit';
 
@@ -98,14 +99,19 @@ export async function POST(request: Request): Promise<Response> {
     throw error;
   }
 
-  const signerTypeRaw = form.get('signerType') || 'individual';
-  if (signerTypeRaw !== 'individual' && signerTypeRaw !== 'enterprise') {
+  // `signerType` (individual/enterprise) was replaced by CAS's own
+  // `signType`; reject it loudly instead of silently ignoring an old client.
+  if (form.get('signerType') !== null) {
     return badRequest(
       'INVALID_SIGNER_CONFIG',
-      'signerType must be "individual" or "enterprise"'
+      'signerType was replaced by signType ("PERSONAL" | "BUSINESS"; omit to let the signer choose)'
     );
   }
-  const signerType: SignerType = signerTypeRaw;
+  const signTypeRaw = form.get('signType') || null;
+  if (signTypeRaw !== null && !isSignType(signTypeRaw)) {
+    return badRequest('INVALID_SIGNER_CONFIG', 'signType must be "PERSONAL" or "BUSINESS"');
+  }
+  const signType: SignType | null = signTypeRaw;
 
   const languageRaw = form.get('language') || 'vi';
   if (languageRaw !== 'vi' && languageRaw !== 'en') {
@@ -116,7 +122,7 @@ export async function POST(request: Request): Promise<Response> {
   let signerConfig: CasSignerConfig;
   try {
     signerConfig = CasSignerConfig.create({
-      signerType,
+      signType,
       identificationNumber: form.get('identificationNumber') as string | null,
       taxCode: form.get('taxCode') as string | null,
       organizationName: form.get('organizationName') as string | null,
@@ -158,6 +164,7 @@ export async function POST(request: Request): Promise<Response> {
     signatureFields: signatureFields.map((field) => field.toCasConvention()),
     documentName,
     organizationName: signerConfig.organizationName,
+    signType: signerConfig.signTypeForSubmission(),
     taxCode: signerConfig.taxCodeForSubmission(),
     language,
     file: { buffer, filename: `${documentName}.pdf`, contentType: 'application/pdf' },

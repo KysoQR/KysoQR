@@ -110,11 +110,13 @@ paths:
                     Mảng JSON các ô chữ ký (xem schema `SignatureFieldInput`). Ít nhất 1 ô; không giới hạn số ô mỗi trang.
                     Toạ độ là tỉ lệ 0–1, gốc ở góc trên bên trái trang.
                   example: '[{"page":1,"xRatio":0.52,"yRatio":0.78,"widthRatio":0.34,"heightRatio":0.1}]'
-                signerType:
+                signType:
                   type: string
-                  enum: [individual, enterprise]
-                  default: individual
-                  description: Loại người ký. Giá trị khác → `400 INVALID_SIGNER_CONFIG`.
+                  enum: [PERSONAL, BUSINESS]
+                  description: |
+                    Loại ký, chuyển thẳng sang CAS. `PERSONAL`: người ký bắt buộc ký bằng chứng thư cá nhân. `BUSINESS`: bắt buộc ký bằng chứng thư doanh nghiệp. Khi có giá trị, người ký **không đổi được** loại ký trên Cas ID.
+                    **Không gửi** = người ký tự chọn trên Cas ID. Giá trị khác → `400 INVALID_SIGNER_CONFIG`.
+                    Thay cho field cũ `signerType` (`individual`/`enterprise`): request còn gửi `signerType` sẽ nhận `400 INVALID_SIGNER_CONFIG`.
                 identificationNumber:
                   type: string
                   pattern: '^\d{9}$|^\d{12}$'
@@ -124,13 +126,15 @@ paths:
                 taxCode:
                   type: string
                   pattern: '^\d{10}$|^\d{10}-\d{3}$'
-                  description: Mã số thuế. **Bắt buộc khi `signerType=enterprise`** (thiếu → `400 INVALID_SIGNER_CONFIG`, message `taxCode is required for enterprise signers`); bỏ qua khi ký cá nhân. 10 số, hoặc 10 số + `-` + 3 số.
+                  description: |
+                    Mã số thuế, **không bắt buộc**, chỉ dùng khi `signType=BUSINESS` (các trường hợp khác bị bỏ qua). 10 số, hoặc 10 số + `-` + 3 số; sai định dạng → `400 INVALID_SIGNER_CONFIG`.
+                    Có MST: người ký bắt buộc dùng chứng thư số của đúng doanh nghiệp đó. Không có: dùng chứng thư của bất kỳ doanh nghiệp nào người ký có.
                 organizationName:
                   type: string
-                  description: Tên tổ chức, chỉ dùng khi `signerType=enterprise`. Gửi sang CAS nếu khác rỗng.
+                  description: Tên tổ chức, chỉ dùng khi `signType=BUSINESS`. Gửi sang CAS nếu khác rỗng.
                 representativeName:
                   type: string
-                  description: Người đại diện, chỉ dùng khi `signerType=enterprise`. Được kiểm tra nhưng **không gửi sang CAS**.
+                  description: Người đại diện, chỉ dùng khi `signType=BUSINESS`. **Không gửi sang CAS**.
                 language:
                   type: string
                   enum: [vi, en]
@@ -172,9 +176,9 @@ paths:
                 invalid_signer_config:
                   summary: Thông tin người ký sai
                   value: { error: INVALID_SIGNER_CONFIG, message: identificationNumber must be 9 or 12 digits }
-                enterprise_missing_tax_code:
-                  summary: Ký doanh nghiệp thiếu MST
-                  value: { error: INVALID_SIGNER_CONFIG, message: taxCode is required for enterprise signers }
+                invalid_sign_type:
+                  summary: signType sai
+                  value: { error: INVALID_SIGNER_CONFIG, message: 'signType must be "PERSONAL" or "BUSINESS"' }
                 invalid_language:
                   summary: language sai
                   value: { error: INVALID_LANGUAGE, message: 'language must be "vi" or "en"' }
