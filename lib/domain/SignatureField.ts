@@ -134,14 +134,70 @@ const overlaps = (a: SignatureFieldProps, b: SignatureFieldProps): boolean =>
   a.yRatio < b.yRatio + b.heightRatio &&
   a.yRatio + a.heightRatio > b.yRatio;
 
-/** Pick a predictable non-overlapping default slot for a new box. */
+/** The part of a page currently on screen, as fractions (0..1) of its height. */
+export interface VisibleBand {
+  top: number;
+  bottom: number;
+}
+
+const DEFAULT_WIDTH_RATIO = 0.34;
+const DEFAULT_HEIGHT_RATIO = 0.1;
+/** Right column first, then left -- same order as DEFAULT_SLOTS. */
+const BAND_X_SLOTS = [0.52, 0.08] as const;
+const BAND_Y_GAP = 0.02;
+
+/**
+ * Pick a non-overlapping default slot for a new box.
+ *
+ * With `visibleBand` (what the user is looking at on that page), the box
+ * goes right there: centred in the band, then stepping down/up one box
+ * height at a time while staying inside the band, right column before left.
+ * If every slot in view is taken it still lands centred in view (overlap
+ * accepted -- seeing the new box beats avoiding one). Without a band: the
+ * fixed DEFAULT_SLOTS near the bottom of the page, as before.
+ */
 export const makeAvailableField = (
   page: number,
-  existingOnPage: SignatureFieldProps[]
+  existingOnPage: SignatureFieldProps[],
+  visibleBand?: VisibleBand
 ): SignatureFieldProps => {
+  const fits = (candidate: SignatureFieldProps) =>
+    existingOnPage.every((field) => !overlaps(candidate, field));
+
+  const top = visibleBand ? clamp01(visibleBand.top) : 0;
+  const bottom = visibleBand ? clamp01(visibleBand.bottom) : 0;
+  if (visibleBand && bottom > top) {
+    const h = DEFAULT_HEIGHT_RATIO;
+    const maxY = 1 - h;
+    const centreY = clamp((top + bottom) / 2 - h / 2, 0, maxY);
+    const step = h + BAND_Y_GAP;
+    const ys = [centreY];
+    for (let k = 1; k <= Math.ceil(1 / step); k += 1) {
+      for (const y of [centreY + k * step, centreY - k * step]) {
+        // Whole box inside the band (and the page); a tiny epsilon keeps
+        // float rounding from rejecting a slot that exactly touches an edge.
+        if (y >= top - 1e-9 && y + h <= bottom + 1e-9 && y >= 0 && y <= maxY) ys.push(y);
+      }
+    }
+    const make = (xRatio: number, yRatio: number): SignatureFieldProps => ({
+      page,
+      xRatio,
+      yRatio,
+      widthRatio: DEFAULT_WIDTH_RATIO,
+      heightRatio: h,
+    });
+    for (const y of ys) {
+      for (const x of BAND_X_SLOTS) {
+        const candidate = make(x, y);
+        if (fits(candidate)) return candidate;
+      }
+    }
+    return make(BAND_X_SLOTS[0], centreY);
+  }
+
   for (let index = 0; index < DEFAULT_SLOTS.length; index += 1) {
     const candidate = makeField(page, index);
-    if (existingOnPage.every((field) => !overlaps(candidate, field))) return candidate;
+    if (fits(candidate)) return candidate;
   }
   return makeField(page, existingOnPage.length);
 };
