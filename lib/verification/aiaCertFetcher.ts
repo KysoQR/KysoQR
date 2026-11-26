@@ -64,30 +64,6 @@ const MAX_AIA_RESPONSE_BYTES = 1_000_000;
 const MAX_CAISSUERS_URLS_PER_CERT = 3;
 const GENERAL_NAME_URI = 6;
 
-/**
- * Explicit, exact-match corrections for `caIssuers` URLs that are broken in
- * already-issued certificates -- confirmed for IntrustCA: their real file
- * lives at `.../assets/cert/...`, but the AIA field baked into already-issued
- * certificates omits the `/assets/` segment, so the literal URL 404s into
- * their web app's client routing instead of hitting the real static file.
- * Since already-issued certificates can't be corrected retroactively, this
- * is the only way such a certificate's chain can ever be completed.
- *
- * Deliberately a small, exact-match table, not a guessed/generic
- * path-rewriting heuristic (e.g. "try inserting /assets/ into any failing
- * URL") -- each entry here was independently confirmed (by fetching it and
- * getting back a real, parseable certificate) to be the CA's actual file
- * location, so this never introduces a URL that hasn't been verified to
- * work. It also grants no extra trust by itself: whatever bytes come back
- * from a corrected URL still have to pass the exact same
- * `forge.pki.verifyCertificateChain` cryptographic check in
- * `certChainVerifier.ts` as any other AIA candidate.
- */
-export const KNOWN_AIA_URL_CORRECTIONS: Readonly<Record<string, string>> = {
-  'https://intrustca.vn/cert/IntrustCA_Remote_Signing.cer':
-    'https://intrustca.vn/assets/cert/IntrustCA_Remote_Signing.cer',
-};
-
 /** Every matching `caIssuers` URI on a cert's AIA extension (RFC 5280 allows
  * more than one), bounded so a pathological cert can't make us try forever. */
 export function findAllAiaUrls(cert: pkijs.Certificate, accessMethodOid: string): string[] {
@@ -130,33 +106,25 @@ export async function fetchCaIssuerCertificates(
 
   let lastError: string | undefined;
   let lastAttempts: number | undefined;
-  for (const declaredUrl of urls) {
-    // The certificate's own declared URL is always tried first -- the known
-    // correction (if any) is only a fallback, never a replacement, in case
-    // the CA ever fixes the declared URL to serve the real file directly.
-    const correction = KNOWN_AIA_URL_CORRECTIONS[declaredUrl];
-    const candidateUrls = correction ? [declaredUrl, correction] : [declaredUrl];
-
-    for (const url of candidateUrls) {
-      const cached = getCachedAiaCerts(url);
-      if (cached) {
-        return { certs: cached, url };
-      }
-
-      const fetched = await fetchUrlShared(url, isAddressAllowedOverride, inFlight);
-      if (fetched.certs.length > 0) {
-        setCachedAiaCerts(url, fetched.certs);
-        return { certs: fetched.certs, url, attempts: fetched.attempts };
-      }
-      // The fresh fetch failed: an expired copy (still checked cryptographically
-      // like any candidate) beats breaking an otherwise valid chain.
-      const stale = getStaleAiaCerts(url);
-      if (stale) {
-        return { certs: stale, url, attempts: fetched.attempts, stale: true, error: fetched.error };
-      }
-      lastError = fetched.error;
-      lastAttempts = fetched.attempts;
+  for (const url of urls) {
+    const cached = getCachedAiaCerts(url);
+    if (cached) {
+      return { certs: cached, url };
     }
+
+    const fetched = await fetchUrlShared(url, isAddressAllowedOverride, inFlight);
+    if (fetched.certs.length > 0) {
+      setCachedAiaCerts(url, fetched.certs);
+      return { certs: fetched.certs, url, attempts: fetched.attempts };
+    }
+    // The fresh fetch failed: an expired copy (still checked cryptographically
+    // like any candidate) beats breaking an otherwise valid chain.
+    const stale = getStaleAiaCerts(url);
+    if (stale) {
+      return { certs: stale, url, attempts: fetched.attempts, stale: true, error: fetched.error };
+    }
+    lastError = fetched.error;
+    lastAttempts = fetched.attempts;
   }
   return { certs: [], url: urls[0] ?? null, error: lastError, attempts: lastAttempts };
 }
