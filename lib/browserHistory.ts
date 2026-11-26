@@ -22,9 +22,10 @@ export function pruneStoredPdfs(): Promise<void> {
   return pruneSignedPdfs(keep);
 }
 
-/** On opening the home page: expire old / stale entries (7-day TTL, pending
- * rounds past their QR expiry, expired download keys), delete PDFs nothing
- * refers to any more, and clear keys older versions left in localStorage. */
+/** On opening the app (any page): expire old / stale entries (30-minute TTL,
+ * pending rounds past their QR expiry, expired download keys, an expired
+ * session on screen), delete PDFs nothing refers to any more, and clear keys
+ * older versions left in localStorage. */
 export async function cleanupBrowserStorage(): Promise<void> {
   migrateLegacyLocalStorage();
   cleanupRecentSignatures();

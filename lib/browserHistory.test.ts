@@ -31,19 +31,22 @@ beforeEach(() => {
 });
 
 const iso = (msFromNow: number) => new Date(Date.now() + msFromNow).toISOString();
-const DAY = 24 * 60 * 60 * 1000;
+const MINUTE = 60 * 1000;
 
 describe('cleanupBrowserStorage', () => {
   it('expires entries, keeps files only for what is left + the session on screen', async () => {
     local.map.set(
       'kysoqr.recentSignatures',
       JSON.stringify([
-        { code: 'kysoqr.com#KEEP01', name: 'a.pdf', signedAt: iso(-DAY), status: 'signed' },
-        { code: 'kysoqr.com#OLD001', name: 'b.pdf', signedAt: iso(-8 * DAY), status: 'signed' },
+        { code: 'kysoqr.com#KEEP01', name: 'a.pdf', signedAt: iso(-10 * MINUTE), status: 'signed' },
+        { code: 'kysoqr.com#OLD001', name: 'b.pdf', signedAt: iso(-40 * MINUTE), status: 'signed' },
         { code: pendingCode('gone'), name: 'c.pdf', signedAt: iso(-60_000), status: 'pending', expiresAt: iso(-1000) },
       ])
     );
-    session.map.set('kysoqr.activeSession', JSON.stringify({ kind: 'failed', code: pendingCode('x'), name: 'x.pdf' }));
+    session.map.set(
+      'kysoqr.activeSession',
+      JSON.stringify({ kind: 'failed', code: pendingCode('x'), name: 'x.pdf', savedAt: iso(-5 * MINUTE) })
+    );
     // An old version's round keys in localStorage.
     local.map.set('kysoqr.identityKey', 'leaked');
     local.map.set('kysoqr.signRequestId', 'req-old');

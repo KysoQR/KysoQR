@@ -51,7 +51,7 @@
       "downloadButton": "Download",
       "downloadError": "Couldn't download this file (the download allowance may be used up). Please use a copy you already downloaded.",
       "pending": "Waiting for signature",
-      "storedNote": "Kept in this browser for 7 days",
+      "storedNote": "Kept in this browser for 30 minutes",
       "clearHistory": "Clear history",
       "clearConfirm": "Clear all signing history on this device?",
       "clearConfirmYes": "Clear",
