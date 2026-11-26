@@ -226,18 +226,22 @@
     "pageCount_other": "{{count}} trang"
   },
   "signerConfig": {
-    "signerKindLabel": "Người ký là ai?",
-    "signerKind": {
-      "individual": "Cá nhân",
-      "enterprise": "Doanh nghiệp"
+    "signTypeLabel": "Loại ký",
+    "signType": {
+      "PERSONAL": "Cá nhân",
+      "BUSINESS": "Doanh nghiệp"
     },
+    "hintNone": "Chưa chọn: người ký tự chọn ký cá nhân hoặc doanh nghiệp trên Cas ID.",
+    "hintPersonal": "Bắt buộc ký bằng chứng thư cá nhân. Người ký không được đổi loại ký.",
+    "hintBusiness": "Bắt buộc ký bằng chứng thư doanh nghiệp. Người ký không được đổi loại ký.",
     "cccdLabel": "CCCD người ký",
-    "optionalNotice": "Nhập thông tin thì gửi yêu cầu ký sang Cas ID.",
-    "enterpriseTaxCodeRequired": "Bắt buộc nhập MST, CCCD để ký doanh nghiệp.",
+    "cccdHint": "Nhập CCCD để nhận thông báo ký trên Cas ID",
     "fullNameLabel": "Họ tên người ký",
     "fullNamePlaceholder": "NGUYỄN VĂN A",
     "taxCodeLabel": "Mã số thuế (MST)",
     "taxCodeHint": "10 số, có thể kèm 3 số chi nhánh.",
+    "taxCodeEmptyHint": "Để trống: người ký dùng chứng thư số của bất kỳ doanh nghiệp nào họ có.",
+    "taxCodeFilledHint": "Người ký bắt buộc dùng chứng thư số của doanh nghiệp có MST {{taxCode}}.",
     "organizationLabel": "Tên công ty",
     "organizationPlaceholder": "Tên công ty theo đăng ký",
     "representativeLabel": "Người đại diện",
