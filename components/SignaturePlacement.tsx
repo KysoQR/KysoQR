@@ -214,12 +214,27 @@ function SignaturePlacementInner(
     const context = canvas.getContext('2d');
     if (!context) return;
 
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    // Render the bitmap at the screen's real pixel density (Retina = 2x):
+    // a canvas sized only in CSS pixels gets upscaled by the browser and
+    // looks blurry. Layout (style size, pageMetrics, field positions) stays
+    // in CSS pixels. Capped so a high zoom on a dense screen never exceeds
+    // iOS Safari's ~16.7M-pixel canvas limit (which renders blank instead).
+    const MAX_CANVAS_PIXELS = 16_000_000;
+    const ratio = Math.min(
+      window.devicePixelRatio || 1,
+      Math.sqrt(MAX_CANVAS_PIXELS / (viewport.width * viewport.height))
+    );
+    canvas.width = Math.floor(viewport.width * ratio);
+    canvas.height = Math.floor(viewport.height * ratio);
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
-    context.clearRect(0, 0, viewport.width, viewport.height);
-    const renderTask = page.render({ canvas, canvasContext: context, viewport });
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    const renderTask = page.render({
+      canvas,
+      canvasContext: context,
+      viewport,
+      transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined,
+    });
     renderTasksRef.current.set(pageNumber, renderTask);
     try {
       await renderTask.promise;
@@ -659,16 +674,16 @@ function SignaturePlacementInner(
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div
         ref={stageRef}
-        // Dark background (was white) -- makes each white PDF page's own
-        // edges/boundaries visually obvious against the surrounding stage,
-        // especially once zoomed in and there's real empty space around/
-        // between pages (matches the convention most PDF viewers use). No
+        // Light gray stage (was near-black, which felt heavy next to the
+        // light app UI) -- each white page gets a shadow + hairline ring
+        // (PdfPageBlock) so its edges stay obvious against the stage,
+        // especially once zoomed in, like light-mode PDF viewers do. No
         // longer scroll-contained -- grows to its natural height and scrolls
         // along with the page (see SigningWizard.tsx's single page scroll).
         // `overflow-x-auto`: zoomed past 100% a page is wider than the stage;
         // scroll it sideways here instead of letting it spill over the
         // signer column next to it (it used to, from ~150% zoom up).
-        className="relative mx-auto w-full max-w-none space-y-4 overflow-x-auto rounded-md border border-gray-700 bg-neutral-900 p-2"
+        className="relative mx-auto w-full max-w-none space-y-4 overflow-x-auto rounded-md border border-border-subtle bg-gray-100 p-3"
       >
         {pageNumbers.map((pageNumber) => (
           <PdfPageBlock
@@ -748,7 +763,7 @@ function PdfPageBlock({
     <div
       ref={(el) => registerWrapperRef(pageNumber, el)}
       data-page={pageNumber}
-      className="relative mx-auto w-full"
+      className="relative mx-auto w-full bg-white shadow-md ring-1 ring-black/5"
       style={{
         aspectRatio: aspect ? `1 / ${aspect}` : undefined,
         width: widthPx,
