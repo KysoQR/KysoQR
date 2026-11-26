@@ -513,7 +513,7 @@ paths:
 
         Mã in trên PDF nên ai cầm file cũng tra được: response chỉ gồm các trường liệt kê trong schema (lọc theo danh sách trắng),
         số CCCD bị che chỉ còn 4 số cuối (mã số thuế `MST:` giữ nguyên), `device` chỉ còn `model`. Mã sai định dạng
-        (phải là `<tiền tố>#<mã>`, vd `kysoqr.com#3bLzsA`) trả `signingRound: null` mà không gọi CAS.
+        (phải là `<tiền tố>#<mã>`, vd `kysoqr.com#3bLzsA`; phần mã dài 6–32 ký tự gồm chữ, số, `_` và `-`, vd `kysoqr.com#nm_DRT`) trả `signingRound: null` mà không gọi CAS.
 
         Nguồn trong code: `app/api/verify/signing-round/[orgIdSigned]/route.ts`, `lib/cas/CasProvider.ts` (`SigningRoundDetail`).
       parameters:

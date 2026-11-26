@@ -8,8 +8,8 @@ import type { SigningRoundCertParty, SigningRoundDetail } from './cas/CasProvide
  * last 4 digits, and of the device only the model is kept.
  */
 
-/** Lookup code shape: `<origin>#<code>`, e.g. `kysoqr.com#3bLzsA`. */
-const LOOKUP_CODE = /^[A-Za-z0-9.-]{1,64}#[A-Za-z0-9]{6,32}$/;
+/** Lookup code shape: `<origin>#<code>`, e.g. `kysoqr.com#3bLzsA`; the code is base64url (may contain `_`/`-`, e.g. `nm_DRT`). */
+const LOOKUP_CODE = /^[A-Za-z0-9.-]{1,64}#[A-Za-z0-9_-]{6,32}$/;
 
 export function isLookupCode(value: string): boolean {
   return LOOKUP_CODE.test(value);
