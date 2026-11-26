@@ -50,7 +50,7 @@
       "downloadButton": "Tải xuống",
       "downloadError": "Không tải được file này (có thể đã hết lượt tải). Vui lòng dùng bản đã tải trước đó.",
       "pending": "Đang chờ ký",
-      "storedNote": "Lưu trên trình duyệt này trong 7 ngày",
+      "storedNote": "Lưu trên trình duyệt này trong 30 phút",
       "clearHistory": "Xoá lịch sử",
       "clearConfirm": "Xoá toàn bộ lịch sử ký trên máy này?",
       "clearConfirmYes": "Xoá",

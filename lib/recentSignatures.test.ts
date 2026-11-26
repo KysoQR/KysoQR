@@ -26,13 +26,13 @@ beforeEach(() => {
 });
 
 const iso = (msFromNow: number) => new Date(Date.now() + msFromNow).toISOString();
-const HOUR = 60 * 60 * 1000;
+const MINUTE = 60 * 1000;
 const saved = () => JSON.parse(store.get('kysoqr.recentSignatures') ?? '[]') as RecentSignature[];
 
 const signed = (code: string, extra: Partial<RecentSignature> = {}): RecentSignature => ({
   code,
   name: `${code}.pdf`,
-  signedAt: iso(-HOUR),
+  signedAt: iso(-5 * MINUTE),
   status: 'signed',
   ...extra,
 });
@@ -49,7 +49,7 @@ describe('recentSignatures', () => {
   it('reads entries saved before `status` existed (treated as signed)', () => {
     store.set(
       'kysoqr.recentSignatures',
-      JSON.stringify([{ code: 'kysoqr.com#AAAAAA', name: 'a.pdf', signedAt: iso(-HOUR) }])
+      JSON.stringify([{ code: 'kysoqr.com#AAAAAA', name: 'a.pdf', signedAt: iso(-5 * MINUTE) }])
     );
     const [entry] = getRecentSignatures();
     expect(entry?.code).toBe('kysoqr.com#AAAAAA');
@@ -81,12 +81,12 @@ describe('recentSignatures', () => {
     expect(getRecentSignatures()[0]?.signatureFields).toEqual(fields);
   });
 
-  it('hides entries past the 7-day TTL, and cleanup drops them from storage', () => {
+  it('hides entries past the 30-minute TTL, and cleanup drops them from storage', () => {
     store.set(
       'kysoqr.recentSignatures',
       JSON.stringify([
         signed('kysoqr.com#NEW000'),
-        signed('kysoqr.com#OLD000', { signedAt: iso(-RECENT_TTL_MS - HOUR) }),
+        signed('kysoqr.com#OLD000', { signedAt: iso(-RECENT_TTL_MS - MINUTE) }),
       ])
     );
     expect(getRecentSignatures().map((e) => e.code)).toEqual(['kysoqr.com#NEW000']);
@@ -95,11 +95,22 @@ describe('recentSignatures', () => {
     expect(saved().map((e) => e.code)).toEqual(['kysoqr.com#NEW000']);
   });
 
-  it('drops a pending round past its QR expiry, or after 24h without one', () => {
+  it('keeps an entry 29 minutes old, drops one 31 minutes old', () => {
+    store.set(
+      'kysoqr.recentSignatures',
+      JSON.stringify([
+        signed('kysoqr.com#MIN029', { signedAt: iso(-29 * MINUTE) }),
+        signed('kysoqr.com#MIN031', { signedAt: iso(-31 * MINUTE) }),
+      ])
+    );
+    expect(getRecentSignatures().map((e) => e.code)).toEqual(['kysoqr.com#MIN029']);
+  });
+
+  it('drops a pending round once its QR has expired, even within 30 minutes', () => {
     addRecentSignature(pending('expired', { expiresAt: iso(-1000) }));
-    addRecentSignature(pending('stale', { signedAt: iso(-25 * HOUR) }));
-    addRecentSignature(pending('live', { expiresAt: iso(5 * 60_000) }));
-    expect(getRecentSignatures().map((e) => e.code)).toEqual([pendingCode('live')]);
+    addRecentSignature(pending('no-expiry-yet'));
+    addRecentSignature(pending('live', { expiresAt: iso(5 * MINUTE) }));
+    expect(getRecentSignatures().map((e) => e.code)).toEqual([pendingCode('live'), pendingCode('no-expiry-yet')]);
   });
 
   it('drops an expired identityKey but keeps the entry', () => {
@@ -110,7 +121,7 @@ describe('recentSignatures', () => {
   });
 
   it('forgetIdentityKey removes the key once the PDF is kept locally', () => {
-    addRecentSignature(signed('kysoqr.com#KEY111', { identityKey: 'ik', identityKeyExpiresAt: iso(HOUR) }));
+    addRecentSignature(signed('kysoqr.com#KEY111', { identityKey: 'ik', identityKeyExpiresAt: iso(60 * MINUTE) }));
     forgetIdentityKey('kysoqr.com#KEY111');
     expect(saved()[0]?.identityKey).toBeUndefined();
     expect(saved()[0]?.identityKeyExpiresAt).toBeUndefined();

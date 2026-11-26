@@ -4,11 +4,12 @@ export const RECENT_SIGNATURES_KEY = 'kysoqr.recentSignatures';
 const STORAGE_KEY = RECENT_SIGNATURES_KEY;
 const MAX_ENTRIES = 5;
 
-/** Entries (and their locally kept PDFs) are dropped after 7 days -- signed
- * documents shouldn't sit in a browser forever, e.g. on a shared computer. */
-export const RECENT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-/** A pending entry whose QR expiry was never recorded is dropped after this. */
-const PENDING_FALLBACK_TTL_MS = 24 * 60 * 60 * 1000;
+/** Entries (and their locally kept PDFs, and the session on screen -- see
+ * lib/activeSession.ts) are dropped 30 minutes after signing: signed
+ * documents shouldn't linger in a browser, e.g. on a shared computer. A
+ * browser can't delete anything while the site is closed, so past this they
+ * are hidden on read and deleted on the next visit (lib/browserHistory.ts). */
+export const RECENT_TTL_MS = 30 * 60 * 1000;
 
 export interface RecentSignature {
   /** orgIdSigned, e.g. "kysoqr.com#8F2K-4T7Q" -- used for the signing-round
@@ -54,15 +55,14 @@ function isRecentSignature(value: unknown): value is RecentSignature {
 
 const time = (iso: string | undefined): number => (iso ? new Date(iso).getTime() : NaN);
 
-/** Past the 7-day TTL (by `signedAt`), or -- pending only -- past its QR
- * expiry (or 24h without one recorded). */
+/** Past the 30-minute TTL (by `signedAt`), or -- pending only -- past its
+ * QR expiry when one was recorded. */
 export function isRecentSignatureExpired(entry: RecentSignature, now = Date.now()): boolean {
   const signedAt = time(entry.signedAt);
   if (!Number.isFinite(signedAt) || now - signedAt > RECENT_TTL_MS) return true;
   if (!isPendingSignature(entry)) return false;
   const expiresAt = time(entry.expiresAt);
-  if (Number.isFinite(expiresAt)) return now > expiresAt;
-  return now - signedAt > PENDING_FALLBACK_TTL_MS;
+  return Number.isFinite(expiresAt) && now > expiresAt;
 }
 
 function withoutIdentityKey(entry: RecentSignature): RecentSignature {
