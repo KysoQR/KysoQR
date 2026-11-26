@@ -328,6 +328,7 @@
   "signingRound": {
     "notFound": "Không tìm thấy mã xác minh.",
     "signedAt": "Ký lúc",
+    "popupTitle": "Chi tiết phiên ký",
     "verdict": {
       "validTitle": "Chữ ký hợp lệ",
       "validNote": "Phiên ký đã hoàn tất, chứng thư số hợp lệ và tài liệu không bị thay đổi kể từ thời điểm ký.",
@@ -446,6 +447,19 @@
         "revoked": "Chứng thư số ĐÃ BỊ THU HỒI",
         "unavailableWithUrl": "Không kiểm tra được"
       }
+    },
+    "invalid": "Không hợp lệ",
+    "certInfo": "Thông tin chứng thư số",
+    "reasonTitle": "Lý do không hợp lệ",
+    "technicalDetail": "Chi tiết kỹ thuật",
+    "reasons": {
+      "ROOT_NOT_TRUSTED": "Chứng thư số được cấp bởi một tổ chức (Root CA) không nằm trong danh sách Root CA tin cậy, ví dụ CA dùng cho môi trường thử nghiệm.",
+      "CONTENT_DIGEST_MISMATCH": "Nội dung tệp PDF đã bị chỉnh sửa sau khi ký, không còn khớp với nội dung đã được ký.",
+      "CHAIN_VALIDATION_FAILED": "Chuỗi chứng thư số bị thiếu hoặc không xác minh được tới tổ chức phát hành.",
+      "SIGNATURE_INVALID": "Chữ ký số không khớp với chứng thư số, xác minh mật mã thất bại.",
+      "TRUST_STORE_NOT_CONFIGURED": "Máy chủ chưa có danh sách Root CA tin cậy để đối chiếu, nên chưa xác minh được chữ ký này.",
+      "UNSUPPORTED_SUBFILTER": "Định dạng chữ ký trong tệp PDF này chưa được hỗ trợ kiểm tra, nên chưa xác minh được chữ ký.",
+      "UNSUPPORTED_ALGORITHM": "Thuật toán khoá của chứng thư số chưa được hỗ trợ kiểm tra, nên chưa xác minh được chữ ký."
     }
   }
 }
